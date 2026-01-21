@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sainsbury's Bill Splitter</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        #root { max-width: 800px; margin: 0 auto; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); padding: 32px; margin-bottom: 24px; }
+        .title { font-size: 32px; font-weight: bold; color: #1f2937; margin-bottom: 8px; }
+        .subtitle { color: #6b7280; margin-bottom: 24px; }
+        .upload-area { border: 3px dashed #d1d5db; border-radius: 12px; padding: 48px; text-align: center; cursor: pointer; transition: all 0.3s; background: #f9fafb; }
+        .upload-area:hover, .upload-area.drag-over { border-color: #667eea; background: #eef2ff; }
+        .upload-icon { font-size: 48px; margin-bottom: 16px; }
+        .upload-text { font-size: 18px; color: #4b5563; margin-bottom: 8px; }
+        .upload-hint { font-size: 14px; color: #9ca3af; }
+        .progress-bar { width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin-bottom: 16px; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #f97316, #fb923c); transition: width 0.3s; }
+        .progress-text { text-align: right; color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+        .item-card { background: #fffbeb; border-radius: 12px; padding: 24px; margin-bottom: 24px; border-left: 4px solid #f59e0b; }
+        .item-name { font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 8px; line-height: 1.4; }
+        .item-details { display: flex; gap: 24px; color: #6b7280; font-size: 14px; margin-bottom: 20px; }
+        .button { padding: 16px 24px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .button-primary { background: #667eea; color: white; }
+        .button-primary:hover { background: #5568d3; transform: translateY(-2px); }
+        .button-secondary { background: #10b981; color: white; }
+        .button-secondary:hover { background: #059669; transform: translateY(-2px); }
+        .button-tertiary { background: #f59e0b; color: white; }
+        .button-tertiary:hover { background: #d97706; transform: translateY(-2px); }
+        .button-custom { background: #8b5cf6; color: white; }
+        .button-custom:hover { background: #7c3aed; transform: translateY(-2px); }
+        .button-back { background: #6b7280; color: white; }
+        .button-back:hover { background: #4b5563; }
+        .button-group { display: flex; gap: 16px; }
+        .button-group button { flex: 1; }
+        .custom-split-panel { background: #f3f4f6; border-radius: 12px; padding: 24px; margin-top: 16px; }
+        .custom-split-title { font-size: 18px; font-weight: 600; color: #1f2937; margin-bottom: 16px; text-align: center; }
+        .split-person-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 12px; background: white; border-radius: 8px; }
+        .split-person-name { font-weight: 600; color: #1f2937; width: 80px; }
+        .split-controls { display: flex; align-items: center; gap: 12px; flex: 1; }
+        .split-button { background: #667eea; color: white; border: none; border-radius: 6px; width: 36px; height: 36px; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .split-button:hover { background: #5568d3; }
+        .split-button:disabled { background: #d1d5db; cursor: not-allowed; }
+        .split-input { width: 80px; text-align: center; border: 2px solid #d1d5db; border-radius: 6px; padding: 8px; font-size: 16px; font-weight: 600; }
+        .split-amount { font-size: 16px; font-weight: 600; color: #059669; width: 80px; text-align: right; }
+        .split-actions { display: flex; gap: 12px; margin-top: 16px; }
+        .split-actions button { flex: 1; }
+        .quantity-split-panel { background: #fef3c7; border-radius: 12px; padding: 20px; margin-top: 16px; }
+        .quantity-split-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+        .quantity-split-label { font-weight: 600; color: #78350f; }
+        .quantity-input { width: 60px; text-align: center; border: 2px solid #fbbf24; border-radius: 6px; padding: 6px; font-size: 16px; font-weight: 600; }
+        .quantity-total { font-size: 14px; color: #92400e; margin-top: 8px; text-align: center; }
+        .split-type-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
+        .split-type-button { flex: 1; padding: 12px; border: 2px solid #d1d5db; background: white; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.2s; }
+        .split-type-button.active { border-color: #667eea; background: #eef2ff; color: #667eea; }
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .person-card { background: linear-gradient(135deg, #fef3c7 0%, #fcd34d 100%); border-radius: 12px; padding: 20px; text-align: center; }
+        .person-name { font-size: 18px; font-weight: bold; color: #78350f; margin-bottom: 8px; }
+        .person-amount { font-size: 28px; font-weight: bold; color: #92400e; }
+        .person-breakdown { font-size: 12px; color: #92400e; margin-top: 8px; opacity: 0.8; }
+        .total-bill { background: linear-gradient(135deg, #fed7aa 0%, #fb923c 100%); border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px; }
+        .total-bill-label { font-size: 14px; opacity: 0.8; margin-bottom: 4px; }
+        .total-bill-amount { font-size: 36px; font-weight: bold; }
+        .divider { border: none; border-top: 1px solid #fed7aa; margin: 16px 0; }
+        .details-section { margin-bottom: 24px; }
+        details { background: #f9fafb; border-radius: 8px; margin-bottom: 12px; }
+        summary { padding: 16px; font-weight: 600; cursor: pointer; color: #1f2937; }
+        summary:hover { background: #f3f4f6; }
+        .item-list { padding: 0 16px 16px 16px; }
+        .item-row { display: flex; justify-content: space-between; font-size: 14px; padding: 8px 0; border-bottom: 1px solid #e5e7eb; }
+        .item-row:last-child { border-bottom: none; }
+        .item-row-name { color: #4b5563; flex: 1; }
+        .item-row-price { font-weight: 600; color: #1f2937; margin-left: 16px; }
+        .loading { text-align: center; padding: 32px; color: #666; }
+        .error { background: #fef2f2; color: #991b1b; padding: 16px; border-radius: 8px; margin-bottom: 16px; }
+        .assignment-indicator { background: #e0e7ff; border: 2px solid #818cf8; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        .assignment-title { font-size: 14px; font-weight: 600; color: #4338ca; margin-bottom: 8px; }
+        .assignment-detail { font-size: 13px; color: #4338ca; line-height: 1.6; }
+        .assignment-detail-row { display: flex; justify-content: space-between; padding: 4px 0; }
+        @media (max-width: 640px) {
+            .card { padding: 20px; }
+            .title { font-size: 24px; }
+            .item-name { font-size: 18px; }
+            .button-group { flex-direction: column; }
+            .split-person-row { flex-wrap: wrap; }
+            .split-controls { width: 100%; margin-top: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        const BillSplitter = () => {
+            const [items, setItems] = useState([]);
+            const [currentItemIndex, setCurrentItemIndex] = useState(0);
+            const [assignments, setAssignments] = useState({});
+            const [showSummary, setShowSummary] = useState(false);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [dragOver, setDragOver] = useState(false);
+            const [showCustomSplit, setShowCustomSplit] = useState(false);
+            const [splitType, setSplitType] = useState('percentage'); // 'percentage' or 'quantity'
+
+            // Custom split percentages (default to equal split)
+            const [customSplit, setCustomSplit] = useState({
+                you: 0,
+                lisa: 16.67,
+                molly: 16.67,
+                rosie: 16.67,
+                stu: 16.67,
+                joe: 16.67
+            });
+
+            // Track which percentages have been manually adjusted
+            const [manuallyAdjusted, setManuallyAdjusted] = useState(new Set());
+
+            // Quantity-based split
+            const [quantitySplit, setQuantitySplit] = useState({
+                youLisa: 0,
+                kids: 0
+            });
+
+            const extractTextFromPdf = async (file) => {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+                let allText = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+
+                    const sortedItems = textContent.items.sort((a, b) => {
+                        const yDiff = Math.abs(b.transform[5] - a.transform[5]);
+                        if (yDiff > 2) return b.transform[5] - a.transform[5];
+                        return a.transform[4] - b.transform[4];
+                    });
+
+                    let lastY = null;
+                    for (let item of sortedItems) {
+                        const y = Math.round(item.transform[5]);
+                        if (lastY !== null && Math.abs(y - lastY) > 2) {
+                            allText += '\n';
+                        }
+                        allText += item.str;
+                        lastY = y;
+                    }
+                    allText += '\n';
+                }
+
+                return allText.split('\n');
+            };
+
+            const parsePdfLines = (lines) => {
+                const items = [];
+                let inGroceries = false;
+                let i = 0;
+
+                while (i < lines.length) {
+                    const line = lines[i].trim();
+
+                    if (line.includes('Groceries (') && line.includes('items)')) {
+                        inGroceries = true;
+                        i++;
+                        continue;
+                    }
+
+                    if (line.includes('Order summary')) {
+                        break;
+                    }
+
+                    if (!inGroceries) {
+                        i++;
+                        continue;
+                    }
+
+                    if (!line) {
+                        i++;
+                        continue;
+                    }
+
+                    const singleLineMatch = line.match(/^(\d+(?:\.\d+)?(?:kg)?)\s+(.+?)\s+£([\d.]+)$/);
+
+                    if (singleLineMatch) {
+                        const quantity = singleLineMatch[1];
+                        const name = singleLineMatch[2].trim();
+                        const price = parseFloat(singleLineMatch[3]);
+
+                        if (name && price > 0) {
+                            items.push({ quantity, name, price });
+                        }
+                        i++;
+                    } else {
+                        const startMatch = line.match(/^(\d+(?:\.\d+)?(?:kg)?)\s+(.+)$/);
+
+                        if (startMatch && i + 1 < lines.length) {
+                            const nextLine = lines[i + 1].trim();
+                            const priceMatch = nextLine.match(/^(.+?)\s+£([\d.]+)$/);
+
+                            if (priceMatch) {
+                                const quantity = startMatch[1];
+                                const namePart1 = startMatch[2].trim();
+                                const namePart2 = priceMatch[1].trim();
+                                const name = (namePart1 + ' ' + namePart2).trim();
+                                const price = parseFloat(priceMatch[2]);
+
+                                if (name && price > 0) {
+                                    items.push({ quantity, name, price });
+                                }
+                                i += 2;
+                            } else {
+                                i++;
+                            }
+                        } else {
+                            i++;
+                        }
+                    }
+                }
+
+                return items;
+            };
+
+            const handleFileUpload = async (file) => {
+                if (!file || file.type !== 'application/pdf') {
+                    setError('Please upload a PDF file');
+                    return;
+                }
+
+                setLoading(true);
+                setError('');
+
+                try {
+                    const lines = await extractTextFromPdf(file);
+                    const extractedItems = parsePdfLines(lines);
+
+                    if (extractedItems.length === 0) {
+                        setError('Could not extract items from PDF. Please make sure this is a Sainsbury\'s receipt.');
+                        setLoading(false);
+                        return;
+                    }
+
+                    setItems(extractedItems);
+                    setCurrentItemIndex(0);
+                    setAssignments({});
+                    setShowSummary(false);
+                    setLoading(false);
+                } catch (err) {
+                    setError('Error reading PDF: ' + err.message);
+                    setLoading(false);
+                }
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const file = e.dataTransfer.files[0];
+                handleFileUpload(file);
+            };
+
+            const handleFileSelect = (e) => {
+                const file = e.target.files[0];
+                handleFileUpload(file);
+            };
+
+            const assignItem = (group) => {
+                const newAssignments = { ...assignments };
+                newAssignments[currentItemIndex] = group;
+                setAssignments(newAssignments);
+                setShowCustomSplit(false);
+
+                if (currentItemIndex < items.length - 1) {
+                    setCurrentItemIndex(currentItemIndex + 1);
+                } else {
+                    setShowSummary(true);
+                }
+            };
+
+            const openCustomSplit = () => {
+                // Reset to equal split (all 6 people)
+                setCustomSplit({
+                    you: 16.67,
+                    lisa: 16.67,
+                    molly: 16.67,
+                    rosie: 16.67,
+                    stu: 16.67,
+                    joe: 16.65  // Slightly less to make exactly 100%
+                });
+
+                // Reset manually adjusted tracking
+                setManuallyAdjusted(new Set());
+
+                // Reset quantity split
+                const currentItem = items[currentItemIndex];
+                const qty = parseFloat(currentItem.quantity) || 1;
+                setQuantitySplit({
+                    youLisa: Math.floor(qty / 2),
+                    kids: Math.ceil(qty / 2)
+                });
+
+                setSplitType('percentage');
+                setShowCustomSplit(true);
+            };
+
+            const redistributePercentages = (changedPerson, newValue) => {
+                const people = ['you', 'lisa', 'molly', 'rosie', 'stu', 'joe'];
+                const newSplit = { ...customSplit };
+                newSplit[changedPerson] = newValue;
+
+                // Mark this person as manually adjusted
+                const newManuallyAdjusted = new Set(manuallyAdjusted);
+                newManuallyAdjusted.add(changedPerson);
+
+                // Get list of people who haven't been manually adjusted (excluding the changed person)
+                const autoAdjustPeople = people.filter(p =>
+                    p !== changedPerson && !newManuallyAdjusted.has(p)
+                );
+
+                // Calculate remaining percentage to distribute
+                const manualTotal = people
+                    .filter(p => newManuallyAdjusted.has(p))
+                    .reduce((sum, p) => sum + newSplit[p], 0);
+
+                const remainingPercentage = 100 - manualTotal;
+
+                // Distribute remaining percentage equally among auto-adjust people
+                if (autoAdjustPeople.length > 0) {
+                    const perPerson = remainingPercentage / autoAdjustPeople.length;
+                    autoAdjustPeople.forEach((p, idx) => {
+                        // Round to 2 decimal places, adjust last person to make exact 100%
+                        if (idx === autoAdjustPeople.length - 1) {
+                            const totalSoFar = people
+                                .filter(person => person !== p)
+                                .reduce((sum, person) => sum + newSplit[person], 0);
+                            newSplit[p] = Math.round((100 - totalSoFar) * 100) / 100;
+                        } else {
+                            newSplit[p] = Math.round(perPerson * 100) / 100;
+                        }
+                    });
+                }
+
+                setCustomSplit(newSplit);
+                setManuallyAdjusted(newManuallyAdjusted);
+            };
+
+            const updatePercentage = (person, delta) => {
+                let newValue = customSplit[person] + delta;
+                newValue = Math.max(0, Math.min(100, newValue));
+                newValue = Math.round(newValue * 100) / 100;
+                redistributePercentages(person, newValue);
+            };
+
+            const setPercentage = (person, value) => {
+                let newValue = parseFloat(value) || 0;
+                newValue = Math.max(0, Math.min(100, newValue));
+                redistributePercentages(person, newValue);
+            };
+
+            const resetToEqualSplit = () => {
+                // Reset to equal 6-way split
+                setCustomSplit({
+                    you: 16.67,
+                    lisa: 16.67,
+                    molly: 16.67,
+                    rosie: 16.67,
+                    stu: 16.67,
+                    joe: 16.65  // Slightly less to make exactly 100%
+                });
+                // Clear manually adjusted tracking
+                setManuallyAdjusted(new Set());
+            };
+
+            const updateQuantity = (group, value) => {
+                const newSplit = { ...quantitySplit };
+                const qty = parseInt(value) || 0;
+                newSplit[group] = Math.max(0, qty);
+                setQuantitySplit(newSplit);
+            };
+
+            const applyCustomSplit = () => {
+                const currentItem = items[currentItemIndex];
+                const newAssignments = { ...assignments };
+
+                if (splitType === 'percentage') {
+                    newAssignments[currentItemIndex] = {
+                        type: 'custom',
+                        splits: { ...customSplit },
+                        price: currentItem.price
+                    };
+                } else {
+                    // Quantity-based split
+                    newAssignments[currentItemIndex] = {
+                        type: 'quantity',
+                        splits: { ...quantitySplit },
+                        price: currentItem.price,
+                        totalQty: parseFloat(currentItem.quantity) || 1
+                    };
+                }
+
+                setAssignments(newAssignments);
+                setShowCustomSplit(false);
+
+                if (currentItemIndex < items.length - 1) {
+                    setCurrentItemIndex(currentItemIndex + 1);
+                } else {
+                    setShowSummary(true);
+                }
+            };
+
+            const goBack = () => {
+                if (showCustomSplit) {
+                    setShowCustomSplit(false);
+                } else if (currentItemIndex > 0) {
+                    setCurrentItemIndex(currentItemIndex - 1);
+                    setShowCustomSplit(false);
+                }
+            };
+
+            const calculateSummary = () => {
+                const totals = {
+                    you: 0,
+                    lisa: 0,
+                    molly: 0,
+                    rosie: 0,
+                    stu: 0,
+                    joe: 0
+                };
+
+                items.forEach((item, index) => {
+                    const assignment = assignments[index];
+
+                    if (!assignment) return;
+
+                    if (typeof assignment === 'string') {
+                        // Old-style simple assignment
+                        if (assignment === 'You & Lisa') {
+                            totals.you += item.price / 2;
+                            totals.lisa += item.price / 2;
+                        } else if (assignment === 'The Kids') {
+                            totals.molly += item.price / 4;
+                            totals.rosie += item.price / 4;
+                            totals.stu += item.price / 4;
+                            totals.joe += item.price / 4;
+                        } else if (assignment === 'Shared') {
+                            const perPerson = item.price / 6;
+                            totals.you += perPerson;
+                            totals.lisa += perPerson;
+                            totals.molly += perPerson;
+                            totals.rosie += perPerson;
+                            totals.stu += perPerson;
+                            totals.joe += perPerson;
+                        }
+                    } else if (assignment.type === 'custom') {
+                        // Percentage-based custom split
+                        totals.you += (item.price * assignment.splits.you) / 100;
+                        totals.lisa += (item.price * assignment.splits.lisa) / 100;
+                        totals.molly += (item.price * assignment.splits.molly) / 100;
+                        totals.rosie += (item.price * assignment.splits.rosie) / 100;
+                        totals.stu += (item.price * assignment.splits.stu) / 100;
+                        totals.joe += (item.price * assignment.splits.joe) / 100;
+                    } else if (assignment.type === 'quantity') {
+                        // Quantity-based split
+                        const pricePerUnit = item.price / assignment.totalQty;
+                        const youLisaTotal = pricePerUnit * assignment.splits.youLisa;
+                        const kidsTotal = pricePerUnit * assignment.splits.kids;
+
+                        totals.you += youLisaTotal / 2;
+                        totals.lisa += youLisaTotal / 2;
+                        totals.molly += kidsTotal / 4;
+                        totals.rosie += kidsTotal / 4;
+                        totals.stu += kidsTotal / 4;
+                        totals.joe += kidsTotal / 4;
+                    }
+                });
+
+                return totals;
+            };
+
+            const getTotalPercentage = () => {
+                return Object.values(customSplit).reduce((sum, val) => sum + val, 0);
+            };
+
+            const getTotalQuantity = () => {
+                return Object.values(quantitySplit).reduce((sum, val) => sum + val, 0);
+            };
+
+            const currentItem = items[currentItemIndex];
+            const progress = items.length > 0 ? ((currentItemIndex + 1) / items.length) * 100 : 0;
+            const totalPercentage = getTotalPercentage();
+            const currentQty = currentItem ? (parseFloat(currentItem.quantity) || 1) : 1;
+            const totalQty = getTotalQuantity();
+
+            if (loading) {
+                return (
+                    <div className="card">
+                        <div className="loading">Loading PDF...</div>
+                    </div>
+                );
+            }
+
+            if (showSummary) {
+                const totals = calculateSummary();
+                const totalBill = Object.values(totals).reduce((sum, val) => sum + val, 0);
+
+                return (
+                    <div className="card">
+                        <h1 className="title">Bill Summary</h1>
+                        <p className="subtitle">Here's how much each person owes</p>
+
+                        <div className="total-bill">
+                            <div className="total-bill-label">Total Bill</div>
+                            <div className="total-bill-amount">£{totalBill.toFixed(2)}</div>
+                        </div>
+
+                        <div className="summary-grid">
+                            <div className="person-card">
+                                <div className="person-name">You</div>
+                                <div className="person-amount">£{totals.you.toFixed(2)}</div>
+                            </div>
+
+                            <div className="person-card">
+                                <div className="person-name">Lisa</div>
+                                <div className="person-amount">£{totals.lisa.toFixed(2)}</div>
+                            </div>
+
+                            <div className="person-card">
+                                <div className="person-name">Molly</div>
+                                <div className="person-amount">£{totals.molly.toFixed(2)}</div>
+                            </div>
+
+                            <div className="person-card">
+                                <div className="person-name">Rosie</div>
+                                <div className="person-amount">£{totals.rosie.toFixed(2)}</div>
+                            </div>
+
+                            <div className="person-card">
+                                <div className="person-name">Stu</div>
+                                <div className="person-amount">£{totals.stu.toFixed(2)}</div>
+                            </div>
+
+                            <div className="person-card">
+                                <div className="person-name">Joe</div>
+                                <div className="person-amount">£{totals.joe.toFixed(2)}</div>
+                            </div>
+                        </div>
+
+                        <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '14px', color: '#6b7280' }}>
+                            <strong>What others owe you:</strong><br/>
+                            Lisa: £{totals.lisa.toFixed(2)} |
+                            Molly: £{totals.molly.toFixed(2)} |
+                            Rosie: £{totals.rosie.toFixed(2)} |
+                            Stu: £{totals.stu.toFixed(2)} |
+                            Joe: £{totals.joe.toFixed(2)}
+                        </div>
+
+                        <button className="button button-back" onClick={() => {
+                            setShowSummary(false);
+                            setCurrentItemIndex(items.length - 1);
+                        }} style={{ marginTop: '24px', width: '100%' }}>
+                            Start Over
+                        </button>
+                    </div>
+                );
+            }
+
+            if (items.length > 0 && currentItem) {
+                if (showCustomSplit) {
+                    return (
+                        <div className="card">
+                            <h2 className="title" style={{ fontSize: '24px' }}>Custom Split</h2>
+                            <p className="subtitle">{currentItem.name}</p>
+
+                            <div className="split-type-toggle">
+                                <button
+                                    className={`split-type-button ${splitType === 'percentage' ? 'active' : ''}`}
+                                    onClick={() => setSplitType('percentage')}
+                                >
+                                    % Split
+                                </button>
+                                <button
+                                    className={`split-type-button ${splitType === 'quantity' ? 'active' : ''}`}
+                                    onClick={() => setSplitType('quantity')}
+                                >
+                                    Qty Split
+                                </button>
+                            </div>
+
+                            {splitType === 'percentage' ? (
+                                <div className="custom-split-panel">
+                                    <div className="custom-split-title">
+                                        Item Price: £{currentItem.price.toFixed(2)}
+                                    </div>
+
+                                    {['you', 'lisa', 'molly', 'rosie', 'stu', 'joe'].map(person => (
+                                        <div key={person} className="split-person-row">
+                                            <div className="split-person-name">
+                                                {person.charAt(0).toUpperCase() + person.slice(1)}
+                                            </div>
+                                            <div className="split-controls">
+                                                <button
+                                                    className="split-button"
+                                                    onClick={() => updatePercentage(person, -5)}
+                                                    disabled={customSplit[person] <= 0}
+                                                >
+                                                    −
+                                                </button>
+                                                <input
+                                                    type="number"
+                                                    className="split-input"
+                                                    value={customSplit[person].toFixed(2)}
+                                                    onChange={(e) => setPercentage(person, e.target.value)}
+                                                    min="0"
+                                                    max="100"
+                                                    step="0.01"
+                                                />
+                                                <span style={{ fontSize: '16px', fontWeight: '600' }}>%</span>
+                                                <button
+                                                    className="split-button"
+                                                    onClick={() => updatePercentage(person, 5)}
+                                                    disabled={customSplit[person] >= 100}
+                                                >
+                                                    +
+                                                </button>
+                                            </div>
+                                            <div className="split-amount">
+                                                £{((currentItem.price * customSplit[person]) / 100).toFixed(2)}
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <div style={{
+                                        textAlign: 'center',
+                                        marginTop: '16px',
+                                        padding: '12px',
+                                        background: totalPercentage === 100 ? '#d1fae5' : '#fee2e2',
+                                        borderRadius: '8px',
+                                        fontWeight: '600',
+                                        color: totalPercentage === 100 ? '#065f46' : '#991b1b'
+                                    }}>
+                                        Total: {totalPercentage.toFixed(2)}%
+                                        {totalPercentage !== 100 && ` (need 100%)`}
+                                    </div>
+
+                                    <div className="split-actions">
+                                        <button className="button button-back" onClick={goBack}>
+                                            Cancel
+                                        </button>
+                                        <button
+                                            className="button button-secondary"
+                                            onClick={resetToEqualSplit}
+                                            style={{ flex: '0.8' }}
+                                        >
+                                            Reset
+                                        </button>
+                                        <button
+                                            className="button button-primary"
+                                            onClick={applyCustomSplit}
+                                            disabled={totalPercentage !== 100}
+                                        >
+                                            Apply Split
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="quantity-split-panel">
+                                    <div className="custom-split-title" style={{ color: '#78350f' }}>
+                                        Total Quantity: {currentQty} | Price: £{currentItem.price.toFixed(2)}
+                                    </div>
+
+                                    <div className="quantity-split-row">
+                                        <div className="quantity-split-label">You & Lisa:</div>
+                                        <input
+                                            type="number"
+                                            className="quantity-input"
+                                            value={quantitySplit.youLisa}
+                                            onChange={(e) => updateQuantity('youLisa', e.target.value)}
+                                            min="0"
+                                            max={currentQty}
+                                        />
+                                        <div style={{ fontSize: '14px', color: '#92400e' }}>
+                                            £{((currentItem.price / currentQty) * quantitySplit.youLisa).toFixed(2)}
+                                        </div>
+                                    </div>
+
+                                    <div className="quantity-split-row">
+                                        <div className="quantity-split-label">The Kids:</div>
+                                        <input
+                                            type="number"
+                                            className="quantity-input"
+                                            value={quantitySplit.kids}
+                                            onChange={(e) => updateQuantity('kids', e.target.value)}
+                                            min="0"
+                                            max={currentQty}
+                                        />
+                                        <div style={{ fontSize: '14px', color: '#92400e' }}>
+                                            £{((currentItem.price / currentQty) * quantitySplit.kids).toFixed(2)}
+                                        </div>
+                                    </div>
+
+                                    <div className="quantity-total" style={{
+                                        background: totalQty === currentQty ? '#d1fae5' : '#fee2e2',
+                                        padding: '8px',
+                                        borderRadius: '6px',
+                                        fontWeight: '600',
+                                        color: totalQty === currentQty ? '#065f46' : '#991b1b'
+                                    }}>
+                                        Allocated: {totalQty} / {currentQty}
+                                        {totalQty !== currentQty && ` (must equal ${currentQty})`}
+                                    </div>
+
+                                    <div className="split-actions">
+                                        <button className="button button-back" onClick={goBack}>
+                                            Cancel
+                                        </button>
+                                        <button
+                                            className="button button-primary"
+                                            onClick={applyCustomSplit}
+                                            disabled={totalQty !== currentQty}
+                                        >
+                                            Apply Split
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                }
+
+                // Check if this item has already been assigned
+                const currentAssignment = assignments[currentItemIndex];
+
+                const renderAssignmentIndicator = () => {
+                    if (!currentAssignment) return null;
+
+                    if (typeof currentAssignment === 'string') {
+                        // Simple assignment
+                        return (
+                            <div className="assignment-indicator">
+                                <div className="assignment-title">Previously assigned to: {currentAssignment}</div>
+                            </div>
+                        );
+                    } else if (currentAssignment.type === 'custom') {
+                        // Percentage-based custom split
+                        return (
+                            <div className="assignment-indicator">
+                                <div className="assignment-title">Custom % Split:</div>
+                                <div className="assignment-detail">
+                                    {Object.entries(currentAssignment.splits).map(([person, percent]) => (
+                                        percent > 0 && (
+                                            <div key={person} className="assignment-detail-row">
+                                                <span>{person.charAt(0).toUpperCase() + person.slice(1)}:</span>
+                                                <span>{percent.toFixed(2)}% (£{((currentItem.price * percent) / 100).toFixed(2)})</span>
+                                            </div>
+                                        )
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    } else if (currentAssignment.type === 'quantity') {
+                        // Quantity-based split
+                        const pricePerUnit = currentItem.price / currentAssignment.totalQty;
+                        return (
+                            <div className="assignment-indicator">
+                                <div className="assignment-title">Quantity Split:</div>
+                                <div className="assignment-detail">
+                                    <div className="assignment-detail-row">
+                                        <span>You & Lisa:</span>
+                                        <span>{currentAssignment.splits.youLisa} items (£{(pricePerUnit * currentAssignment.splits.youLisa).toFixed(2)})</span>
+                                    </div>
+                                    <div className="assignment-detail-row">
+                                        <span>The Kids:</span>
+                                        <span>{currentAssignment.splits.kids} items (£{(pricePerUnit * currentAssignment.splits.kids).toFixed(2)})</span>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+                };
+
+                return (
+                    <div className="card">
+                        <div className="progress-bar">
+                            <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+                        </div>
+                        <div className="progress-text">Item {currentItemIndex + 1} of {items.length}</div>
+
+                        <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
+                            {progress.toFixed(0)}% complete
+                        </div>
+
+                        <div className="item-card">
+                            <div className="item-name">{currentItem.name}</div>
+                            <div className="item-details">
+                                <span><strong>Qty:</strong> {currentItem.quantity}</span>
+                                <span><strong>Price:</strong> £{currentItem.price.toFixed(2)}</span>
+                            </div>
+                        </div>
+
+                        {renderAssignmentIndicator()}
+
+                        <div className="button-group">
+                            <button className="button button-primary" onClick={() => assignItem('You & Lisa')}>
+                                You & Lisa (1)
+                            </button>
+                            <button className="button button-secondary" onClick={() => assignItem('The Kids')}>
+                                The Kids (2)
+                            </button>
+                        </div>
+
+                        <div className="button-group" style={{ marginTop: '16px' }}>
+                            <button className="button button-tertiary" onClick={() => assignItem('Shared')}>
+                                Shared (3)
+                            </button>
+                            <button className="button button-custom" onClick={openCustomSplit}>
+                                Custom Split (4)
+                            </button>
+                        </div>
+
+                        {currentItemIndex > 0 && (
+                            <button className="button button-back" onClick={goBack} style={{ marginTop: '16px', width: '100%' }}>
+                                ← Back
+                            </button>
+                        )}
+                    </div>
+                );
+            }
+
+            return (
+                <div className="card">
+                    <h1 className="title">Sainsbury's Bill Splitter</h1>
+                    <p className="subtitle">Upload your Sainsbury's receipt PDF to split the bill</p>
+
+                    {error && <div className="error">{error}</div>}
+
+                    <div
+                        className={`upload-area ${dragOver ? 'drag-over' : ''}`}
+                        onDrop={handleDrop}
+                        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                        onDragLeave={() => setDragOver(false)}
+                        onClick={() => document.getElementById('fileInput').click()}
+                    >
+                        <div className="upload-icon">📄</div>
+                        <div className="upload-text">Drop your PDF here or click to browse</div>
+                        <div className="upload-hint">Sainsbury's grocery receipt only</div>
+                    </div>
+
+                    <input
+                        id="fileInput"
+                        type="file"
+                        accept="application/pdf"
+                        onChange={handleFileSelect}
+                        style={{ display: 'none' }}
+                    />
+                </div>
+            );
+        };
+
+        ReactDOM.render(<BillSplitter />, document.getElementById('root'));
+    </script>
+</body>
+</html>
