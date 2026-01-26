@@ -12,7 +12,7 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
         #root { max-width: 800px; margin: 0 auto; }
-        .card { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); padding: 32px; margin-bottom: 24px; position: relative; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); padding: 32px; margin-bottom: 24px; }
         .title { font-size: 32px; font-weight: bold; color: #1f2937; margin-bottom: 8px; }
         .subtitle { color: #6b7280; margin-bottom: 24px; }
         .upload-area { border: 3px dashed #d1d5db; border-radius: 12px; padding: 48px; text-align: center; cursor: pointer; transition: all 0.3s; background: #f9fafb; }
@@ -22,7 +22,7 @@
         .upload-hint { font-size: 14px; color: #9ca3af; }
         .progress-bar { width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin-bottom: 16px; }
         .progress-fill { height: 100%; background: linear-gradient(90deg, #f97316, #fb923c); transition: width 0.3s; }
-        .progress-text { text-align: right; color: #6b7280; font-size: 14px; margin-bottom: 24px; padding-right: 60px; }
+        .progress-text { text-align: right; color: #6b7280; font-size: 14px; margin-bottom: 24px; }
         .item-card { background: #fffbeb; border-radius: 12px; padding: 24px; margin-bottom: 24px; border-left: 4px solid #f59e0b; }
         .item-name { font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 8px; line-height: 1.4; }
         .item-details { display: flex; gap: 24px; color: #6b7280; font-size: 14px; margin-bottom: 20px; }
@@ -83,70 +83,6 @@
         .assignment-title { font-size: 14px; font-weight: 600; color: #4338ca; margin-bottom: 8px; }
         .assignment-detail { font-size: 13px; color: #4338ca; line-height: 1.6; }
         .assignment-detail-row { display: flex; justify-content: space-between; padding: 4px 0; }
-        .settings-button { position: fixed; top: 32px; right: calc(50% - 400px - 70px); background: #6b7280; color: white; border: none; border-radius: 50%; width: 56px; height: 56px; font-size: 24px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; }
-        .settings-button:hover { background: #4b5563; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
-        .settings-button.active-split { background: #f59e0b; }
-        .settings-button.active-split:hover { background: #d97706; }
-        .active-split-notice { background: #fef3c7; border: 2px solid #f59e0b; border-radius: 12px; padding: 16px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; }
-        .active-split-notice-icon { font-size: 24px; }
-        .active-split-notice-text { flex: 1; color: #92400e; font-weight: 500; }
-        .settings-container { max-width: 700px; }
-        .settings-section { margin-bottom: 24px; background: #f9fafb; padding: 24px; border-radius: 12px; }
-        .settings-section-title { font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 16px; border-bottom: 2px solid #d1d5db; padding-bottom: 8px; }
-        .settings-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .settings-table thead { background: #f3f4f6; }
-        .settings-table th { padding: 12px 16px; text-align: left; font-weight: 600; color: #1f2937; border-bottom: 2px solid #d1d5db; font-size: 14px; }
-        .settings-table td { padding: 12px 16px; border-bottom: 1px solid #e5e7eb; }
-        .settings-table tbody tr:last-child td { border-bottom: none; }
-        .settings-table tbody tr:hover { background: #f9fafb; }
-        .group-select { width: 100%; padding: 8px 12px; border: 2px solid #d1d5db; border-radius: 6px; font-size: 14px; cursor: pointer; background: white; transition: border-color 0.2s; }
-        .group-select:focus { outline: none; border-color: #667eea; }
-        .group-select:hover { border-color: #9ca3af; }
-        .item-actions { display: flex; gap: 8px; justify-content: flex-end; }
-        .icon-button { background: none; border: none; color: #6b7280; cursor: pointer; font-size: 18px; padding: 8px; transition: all 0.2s; border-radius: 4px; }
-        .icon-button:hover { background: #f3f4f6; color: #1f2937; }
-        .icon-button.delete:hover { background: #fee2e2; color: #991b1b; }
-        .add-button { background: #10b981; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 12px; transition: all 0.2s; font-size: 14px; }
-        .add-button:hover { background: #059669; transform: translateY(-1px); }
-        .group-list { display: flex; flex-direction: column; gap: 8px; }
-        .group-item { background: white; padding: 14px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .group-name-display { font-weight: 600; color: #1f2937; flex: 1; }
-        .group-member-count { font-size: 13px; color: #6b7280; margin-left: 12px; }
-        .inline-edit-input { border: 2px solid #667eea; border-radius: 6px; padding: 6px 10px; font-size: 14px; font-weight: 600; width: 200px; }
-        .inline-edit-input:focus { outline: none; border-color: #5568d3; }
-        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-        .modal-content { background: white; border-radius: 16px; padding: 32px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; }
-        .group-edit-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-        .group-edit-table th { background: #f3f4f6; padding: 12px; text-align: left; font-weight: 600; color: #1f2937; border: 1px solid #d1d5db; }
-        .group-edit-table td { padding: 10px 12px; border: 1px solid #e5e7eb; }
-        .group-edit-table tbody tr:nth-child(even) { background: #f9fafb; }
-        .group-edit-table tbody tr:hover { background: #f3f4f6; }
-        .group-edit-select { width: 100%; padding: 8px; border: 2px solid #d1d5db; border-radius: 6px; font-size: 14px; cursor: pointer; transition: border-color 0.2s; }
-        .group-edit-select:focus { outline: none; border-color: #667eea; }
-        .modal-title { font-size: 24px; font-weight: bold; color: #1f2937; margin-bottom: 24px; }
-        .form-group { margin-bottom: 20px; }
-        .form-label { display: block; font-weight: 600; color: #1f2937; margin-bottom: 8px; }
-        .form-input { width: 100%; padding: 12px; border: 2px solid #d1d5db; border-radius: 8px; font-size: 16px; transition: border-color 0.2s; }
-        .form-input:focus { outline: none; border-color: #667eea; }
-        .error-message { background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
-        .warning-box { background: #fef3c7; padding: 16px; border-radius: 8px; margin-bottom: 20px; }
-        .warning-title { color: #78350f; margin-bottom: 8px; font-weight: 600; }
-        .warning-text { color: #92400e; font-size: 14px; }
-        .checkbox-group { display: flex; flex-direction: column; gap: 8px; }
-        .checkbox-label { display: flex; align-items: center; padding: 8px; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
-        .checkbox-label:hover { background: #f3f4f6; }
-        .checkbox-label input { margin-right: 12px; width: 18px; height: 18px; cursor: pointer; }
-        .radio-group { display: flex; flex-direction: column; gap: 8px; }
-        .radio-label { display: flex; align-items: center; padding: 8px; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
-        .radio-label:hover { background: #f3f4f6; }
-        .radio-label input { margin-right: 12px; width: 18px; height: 18px; cursor: pointer; }
-        .radio-label.current-group { background: #e0e7ff; font-weight: 600; }
-        .group-info { font-size: 12px; color: #6b7280; margin-left: 30px; margin-top: 4px; }
-        .unassigned-notice { background: #f9fafb; padding: 16px; border-radius: 8px; margin-top: 16px; border: 1px solid #d1d5db; }
-        .unassigned-title { font-weight: 600; color: #4b5563; margin-bottom: 8px; }
-        .unassigned-list { color: #6b7280; font-size: 14px; }
-        .modal-actions { display: flex; gap: 12px; margin-top: 24px; }
-        .modal-actions button { flex: 1; }
         @media (max-width: 640px) {
             .card { padding: 20px; }
             .title { font-size: 24px; }
@@ -154,7 +90,6 @@
             .button-group { flex-direction: column; }
             .split-person-row { flex-wrap: wrap; }
             .split-controls { width: 100%; margin-top: 8px; }
-            .settings-button { top: 20px; right: 20px; width: 48px; height: 48px; font-size: 20px; }
         }
     </style>
 </head>
@@ -162,40 +97,9 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState } = React;
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-
-        // Default configuration
-        const DEFAULT_CONFIG = {
-            people: ['Richard', 'Lisa', 'Rosie', 'Molly', 'Joe', 'Stu'],
-            groups: [
-                { name: 'Adults', members: ['Richard', 'Lisa'] },
-                { name: 'Kids', members: ['Rosie', 'Molly', 'Joe', 'Stu'] }
-            ]
-        };
-
-        // Load configuration from localStorage or use defaults
-        const loadConfig = () => {
-            try {
-                const saved = localStorage.getItem('billSplitterConfig');
-                if (saved) {
-                    return JSON.parse(saved);
-                }
-            } catch (e) {
-                console.error('Error loading config:', e);
-            }
-            return DEFAULT_CONFIG;
-        };
-
-        // Save configuration to localStorage
-        const saveConfig = (config) => {
-            try {
-                localStorage.setItem('billSplitterConfig', JSON.stringify(config));
-            } catch (e) {
-                console.error('Error saving config:', e);
-            }
-        };
 
         const BillSplitter = () => {
             const [items, setItems] = useState([]);
@@ -207,91 +111,25 @@
             const [dragOver, setDragOver] = useState(false);
             const [showCustomSplit, setShowCustomSplit] = useState(false);
             const [splitType, setSplitType] = useState('percentage'); // 'percentage' or 'quantity'
-            const [showSettings, setShowSettings] = useState(false);
-            const [config, setConfig] = useState(loadConfig());
-            const [initialConfig, setInitialConfig] = useState(null); // Config snapshot when bill split started
-            const [showResetWarning, setShowResetWarning] = useState(false);
-            const [pendingConfig, setPendingConfig] = useState(null);
-            const [configChanges, setConfigChanges] = useState([]);
 
-            // Custom split percentages (dynamic based on config)
-            const [customSplit, setCustomSplit] = useState({});
+            // Custom split percentages (default to equal split)
+            const [customSplit, setCustomSplit] = useState({
+                you: 0,
+                lisa: 16.67,
+                molly: 16.67,
+                rosie: 16.67,
+                stu: 16.67,
+                joe: 16.67
+            });
 
             // Track which percentages have been manually adjusted
             const [manuallyAdjusted, setManuallyAdjusted] = useState(new Set());
 
             // Quantity-based split
-            const [quantitySplit, setQuantitySplit] = useState({});
-
-            // Initialize custom split based on config
-            useEffect(() => {
-                const initialSplit = {};
-                const numPeople = config.people.length;
-                const basePercent = Math.floor((100 / numPeople) * 100) / 100;
-                const remainder = 100 - (basePercent * numPeople);
-
-                config.people.forEach((person, idx) => {
-                    initialSplit[person] = idx === numPeople - 1 ? basePercent + remainder : basePercent;
-                });
-
-                setCustomSplit(initialSplit);
-            }, [config.people]);
-
-            // Keyboard shortcuts
-            useEffect(() => {
-                const handleKeyDown = (e) => {
-                    // Don't trigger if user is typing in an input field, textarea, or if a modal is open
-                    const isTyping = ['INPUT', 'TEXTAREA'].includes(e.target.tagName);
-
-                    // Only active when on item assignment screen (items exist, not in summary, not in settings)
-                    const isItemAssignmentScreen = items.length > 0 && !showSummary && !showSettings;
-
-                    if (!isItemAssignmentScreen) return;
-
-                    // Handle Escape key - close custom split modal or go back
-                    if (e.key === 'Escape') {
-                        e.preventDefault();
-                        if (showCustomSplit) {
-                            setShowCustomSplit(false);
-                        } else if (currentItemIndex > 0) {
-                            goBack();
-                        }
-                        return;
-                    }
-
-                    // Handle Left Arrow - go back
-                    if (e.key === 'ArrowLeft' && !isTyping) {
-                        e.preventDefault();
-                        if (currentItemIndex > 0 || showCustomSplit) {
-                            goBack();
-                        }
-                        return;
-                    }
-
-                    // Don't trigger number shortcuts if typing in input field or custom split is open
-                    if (isTyping || showCustomSplit) return;
-
-                    // Handle number keys 1-9 for button assignment
-                    if (e.key >= '1' && e.key <= '9') {
-                        const buttonIndex = parseInt(e.key) - 1;
-
-                        // Build the button list: groups first, then "Shared", then "Custom Split"
-                        const buttonActions = [
-                            ...config.groups.map(group => () => assignItem(group.name)),
-                            () => assignItem('Shared'),
-                            () => openCustomSplit()
-                        ];
-
-                        if (buttonIndex < buttonActions.length) {
-                            e.preventDefault();
-                            buttonActions[buttonIndex]();
-                        }
-                    }
-                };
-
-                document.addEventListener('keydown', handleKeyDown);
-                return () => document.removeEventListener('keydown', handleKeyDown);
-            }, [items, showSummary, showSettings, showCustomSplit, currentItemIndex, config.groups, assignItem, openCustomSplit, goBack]);
+            const [quantitySplit, setQuantitySplit] = useState({
+                youLisa: 0,
+                kids: 0
+            });
 
             const extractTextFromPdf = async (file) => {
                 const arrayBuffer = await file.arrayBuffer();
@@ -416,8 +254,6 @@
                     setAssignments({});
                     setShowSummary(false);
                     setLoading(false);
-                    // Snapshot the current config as the initial config for this bill split
-                    setInitialConfig(JSON.parse(JSON.stringify(config)));
                 } catch (err) {
                     setError('Error reading PDF: ' + err.message);
                     setLoading(false);
@@ -450,41 +286,33 @@
             };
 
             const openCustomSplit = () => {
-                // Reset to equal split (all people)
-                const initialSplit = {};
-                const numPeople = config.people.length;
-                const basePercent = Math.floor((100 / numPeople) * 100) / 100;
-                const remainder = 100 - (basePercent * numPeople);
-
-                config.people.forEach((person, idx) => {
-                    initialSplit[person] = idx === numPeople - 1 ? basePercent + remainder : basePercent;
+                // Reset to equal split (all 6 people)
+                setCustomSplit({
+                    you: 16.67,
+                    lisa: 16.67,
+                    molly: 16.67,
+                    rosie: 16.67,
+                    stu: 16.67,
+                    joe: 16.65  // Slightly less to make exactly 100%
                 });
-
-                setCustomSplit(initialSplit);
 
                 // Reset manually adjusted tracking
                 setManuallyAdjusted(new Set());
 
-                // Reset quantity split to equal distribution among groups
+                // Reset quantity split
                 const currentItem = items[currentItemIndex];
                 const qty = parseFloat(currentItem.quantity) || 1;
-                const quantityGroupSplit = {};
+                setQuantitySplit({
+                    youLisa: Math.floor(qty / 2),
+                    kids: Math.ceil(qty / 2)
+                });
 
-                if (config.groups.length > 0) {
-                    const qtyPerGroup = Math.floor(qty / config.groups.length);
-                    const remainder = qty - (qtyPerGroup * config.groups.length);
-                    config.groups.forEach((group, idx) => {
-                        quantityGroupSplit[group.name] = idx === 0 ? qtyPerGroup + remainder : qtyPerGroup;
-                    });
-                }
-
-                setQuantitySplit(quantityGroupSplit);
                 setSplitType('percentage');
                 setShowCustomSplit(true);
             };
 
             const redistributePercentages = (changedPerson, newValue) => {
-                const people = config.people;
+                const people = ['you', 'lisa', 'molly', 'rosie', 'stu', 'joe'];
                 const newSplit = { ...customSplit };
                 newSplit[changedPerson] = newValue;
 
@@ -500,7 +328,7 @@
                 // Calculate remaining percentage to distribute
                 const manualTotal = people
                     .filter(p => newManuallyAdjusted.has(p))
-                    .reduce((sum, p) => sum + (newSplit[p] || 0), 0);
+                    .reduce((sum, p) => sum + newSplit[p], 0);
 
                 const remainingPercentage = 100 - manualTotal;
 
@@ -512,7 +340,7 @@
                         if (idx === autoAdjustPeople.length - 1) {
                             const totalSoFar = people
                                 .filter(person => person !== p)
-                                .reduce((sum, person) => sum + (newSplit[person] || 0), 0);
+                                .reduce((sum, person) => sum + newSplit[person], 0);
                             newSplit[p] = Math.round((100 - totalSoFar) * 100) / 100;
                         } else {
                             newSplit[p] = Math.round(perPerson * 100) / 100;
@@ -538,17 +366,15 @@
             };
 
             const resetToEqualSplit = () => {
-                // Reset to equal split among all people
-                const initialSplit = {};
-                const numPeople = config.people.length;
-                const basePercent = Math.floor((100 / numPeople) * 100) / 100;
-                const remainder = 100 - (basePercent * numPeople);
-
-                config.people.forEach((person, idx) => {
-                    initialSplit[person] = idx === numPeople - 1 ? basePercent + remainder : basePercent;
+                // Reset to equal 6-way split
+                setCustomSplit({
+                    you: 16.67,
+                    lisa: 16.67,
+                    molly: 16.67,
+                    rosie: 16.67,
+                    stu: 16.67,
+                    joe: 16.65  // Slightly less to make exactly 100%
                 });
-
-                setCustomSplit(initialSplit);
                 // Clear manually adjusted tracking
                 setManuallyAdjusted(new Set());
             };
@@ -600,10 +426,14 @@
             };
 
             const calculateSummary = () => {
-                const totals = {};
-                config.people.forEach(person => {
-                    totals[person] = 0;
-                });
+                const totals = {
+                    you: 0,
+                    lisa: 0,
+                    molly: 0,
+                    rosie: 0,
+                    stu: 0,
+                    joe: 0
+                };
 
                 items.forEach((item, index) => {
                     const assignment = assignments[index];
@@ -611,48 +441,44 @@
                     if (!assignment) return;
 
                     if (typeof assignment === 'string') {
-                        // Group assignment
-                        if (assignment === 'Shared') {
-                            // Split equally among all people
-                            const perPerson = item.price / config.people.length;
-                            config.people.forEach(person => {
-                                totals[person] += perPerson;
-                            });
-                        } else {
-                            // Find the group and split among its members
-                            const group = config.groups.find(g => g.name === assignment);
-                            if (group && group.members.length > 0) {
-                                const perPerson = item.price / group.members.length;
-                                group.members.forEach(person => {
-                                    if (totals[person] !== undefined) {
-                                        totals[person] += perPerson;
-                                    }
-                                });
-                            }
+                        // Old-style simple assignment
+                        if (assignment === 'You & Lisa') {
+                            totals.you += item.price / 2;
+                            totals.lisa += item.price / 2;
+                        } else if (assignment === 'The Kids') {
+                            totals.molly += item.price / 4;
+                            totals.rosie += item.price / 4;
+                            totals.stu += item.price / 4;
+                            totals.joe += item.price / 4;
+                        } else if (assignment === 'Shared') {
+                            const perPerson = item.price / 6;
+                            totals.you += perPerson;
+                            totals.lisa += perPerson;
+                            totals.molly += perPerson;
+                            totals.rosie += perPerson;
+                            totals.stu += perPerson;
+                            totals.joe += perPerson;
                         }
                     } else if (assignment.type === 'custom') {
                         // Percentage-based custom split
-                        config.people.forEach(person => {
-                            if (assignment.splits[person]) {
-                                totals[person] += (item.price * assignment.splits[person]) / 100;
-                            }
-                        });
+                        totals.you += (item.price * assignment.splits.you) / 100;
+                        totals.lisa += (item.price * assignment.splits.lisa) / 100;
+                        totals.molly += (item.price * assignment.splits.molly) / 100;
+                        totals.rosie += (item.price * assignment.splits.rosie) / 100;
+                        totals.stu += (item.price * assignment.splits.stu) / 100;
+                        totals.joe += (item.price * assignment.splits.joe) / 100;
                     } else if (assignment.type === 'quantity') {
                         // Quantity-based split
                         const pricePerUnit = item.price / assignment.totalQty;
-                        Object.entries(assignment.splits).forEach(([groupName, qty]) => {
-                            const group = config.groups.find(g => g.name === groupName) ||
-                                         { name: 'Shared', members: config.people };
-                            if (group.members.length > 0) {
-                                const groupTotal = pricePerUnit * qty;
-                                const perPerson = groupTotal / group.members.length;
-                                group.members.forEach(person => {
-                                    if (totals[person] !== undefined) {
-                                        totals[person] += perPerson;
-                                    }
-                                });
-                            }
-                        });
+                        const youLisaTotal = pricePerUnit * assignment.splits.youLisa;
+                        const kidsTotal = pricePerUnit * assignment.splits.kids;
+
+                        totals.you += youLisaTotal / 2;
+                        totals.lisa += youLisaTotal / 2;
+                        totals.molly += kidsTotal / 4;
+                        totals.rosie += kidsTotal / 4;
+                        totals.stu += kidsTotal / 4;
+                        totals.joe += kidsTotal / 4;
                     }
                 });
 
@@ -667,704 +493,11 @@
                 return Object.values(quantitySplit).reduce((sum, val) => sum + val, 0);
             };
 
-            // Detect if there's an active bill split
-            const hasActiveSplit = () => {
-                return items.length > 0 && initialConfig !== null;
-            };
-
-            // Analyze config changes to determine if they're destructive
-            const analyzeConfigChanges = (oldConfig, newConfig) => {
-                const changes = [];
-                let isDestructive = false;
-
-                // Check for added people
-                const addedPeople = newConfig.people.filter(p => !oldConfig.people.includes(p));
-                addedPeople.forEach(person => {
-                    const group = newConfig.groups.find(g => g.members.includes(person));
-                    changes.push(`Added ${person} to ${group ? group.name : 'no group'}`);
-                    isDestructive = true;
-                });
-
-                // Check for deleted people
-                const deletedPeople = oldConfig.people.filter(p => !newConfig.people.includes(p));
-                deletedPeople.forEach(person => {
-                    const group = oldConfig.groups.find(g => g.members.includes(person));
-                    changes.push(`Removed ${person} from ${group ? group.name : 'household'}`);
-                    isDestructive = true;
-                });
-
-                // Check for people who moved groups
-                oldConfig.people.forEach(person => {
-                    if (newConfig.people.includes(person)) {
-                        const oldGroup = oldConfig.groups.find(g => g.members.includes(person));
-                        const newGroup = newConfig.groups.find(g => g.members.includes(person));
-                        if (oldGroup && newGroup && oldGroup.name !== newGroup.name) {
-                            changes.push(`Moved ${person} from ${oldGroup.name} to ${newGroup.name}`);
-                            isDestructive = true;
-                        }
-                    }
-                });
-
-                // Check for added groups
-                const addedGroups = newConfig.groups.filter(g => !oldConfig.groups.some(og => og.name === g.name));
-                addedGroups.forEach(group => {
-                    changes.push(`Added group: ${group.name}`);
-                    isDestructive = true;
-                });
-
-                // Check for deleted groups
-                const deletedGroups = oldConfig.groups.filter(g => !newConfig.groups.some(ng => ng.name === g.name));
-                deletedGroups.forEach(group => {
-                    changes.push(`Removed group: ${group.name}`);
-                    isDestructive = true;
-                });
-
-                // Check for renamed people (non-destructive)
-                // This is tricky - we can't easily detect renames vs add/delete
-                // So we'll just catch group renames
-
-                // Check for renamed groups (non-destructive)
-                oldConfig.groups.forEach((oldGroup, idx) => {
-                    if (idx < newConfig.groups.length) {
-                        const newGroup = newConfig.groups.find(ng =>
-                            ng.members.length === oldGroup.members.length &&
-                            ng.members.every(m => oldGroup.members.includes(m))
-                        );
-                        if (newGroup && newGroup.name !== oldGroup.name) {
-                            changes.push(`Renamed group "${oldGroup.name}" to "${newGroup.name}"`);
-                            // Group renames are non-destructive
-                        }
-                    }
-                });
-
-                return { changes, isDestructive };
-            };
-
-            // Reset the bill split (restart assignment process with same items)
-            const resetBillSplit = () => {
-                // Keep items array intact - only reset the assignment state
-                setCurrentItemIndex(0);
-                setAssignments({});
-                setShowSummary(false);
-                setShowCustomSplit(false);
-                // Note: we keep items and initialConfig so receipt stays in memory
-            };
-
-            // Settings modal component
-            const SettingsModal = () => {
-                const [editingPeople, setEditingPeople] = useState([...config.people]);
-                const [editingGroups, setEditingGroups] = useState(config.groups.map(g => ({ ...g, members: [...g.members] })));
-                const [showPersonModal, setShowPersonModal] = useState(false);
-                const [showGroupModal, setShowGroupModal] = useState(false);
-                const [newPersonName, setNewPersonName] = useState('');
-                const [newGroupName, setNewGroupName] = useState('');
-                const [editingGroupIndex, setEditingGroupIndex] = useState(null);
-
-                const [selectedGroup, setSelectedGroup] = useState('');
-                const [isCreatingNewGroup, setIsCreatingNewGroup] = useState(false);
-                const [newGroupForPerson, setNewGroupForPerson] = useState('');
-                const [validationError, setValidationError] = useState('');
-
-                const addPerson = () => {
-                    setNewPersonName('');
-                    setSelectedGroup('');
-                    setIsCreatingNewGroup(false);
-                    setNewGroupForPerson('');
-                    setValidationError('');
-                    setShowPersonModal(true);
-                };
-
-                const savePerson = () => {
-                    // Validation
-                    if (!newPersonName.trim()) {
-                        setValidationError('Name is required');
-                        return;
-                    }
-
-                    let targetGroupName = '';
-
-                    if (isCreatingNewGroup) {
-                        if (!newGroupForPerson.trim()) {
-                            setValidationError('Group name is required');
-                            return;
-                        }
-                        targetGroupName = newGroupForPerson.trim();
-
-                        // Check if group already exists
-                        if (editingGroups.some(g => g.name === targetGroupName)) {
-                            setValidationError('Group already exists');
-                            return;
-                        }
-
-                        // Create the new group with the new person as member
-                        const newGroup = { name: targetGroupName, members: [newPersonName.trim()] };
-                        setEditingGroups([...editingGroups, newGroup]);
-                    } else {
-                        if (!selectedGroup) {
-                            setValidationError('Please select a group or create a new one');
-                            return;
-                        }
-                        targetGroupName = selectedGroup;
-
-                        // Add person to selected group
-                        const newGroups = editingGroups.map(group => {
-                            if (group.name === targetGroupName) {
-                                return { ...group, members: [...group.members, newPersonName.trim()] };
-                            }
-                            return group;
-                        });
-                        setEditingGroups(newGroups);
-                    }
-
-                    setEditingPeople([...editingPeople, newPersonName.trim()]);
-                    setShowPersonModal(false);
-                };
-
-                const deletePerson = (index) => {
-                    const personName = editingPeople[index];
-                    const personGroup = getPersonGroup(personName);
-
-                    if (personGroup) {
-                        const group = editingGroups.find(g => g.name === personGroup);
-                        if (group && group.members.length === 1) {
-                            if (!confirm(`Deleting ${personName} will leave the "${personGroup}" group empty. The group will be deleted. Continue?`)) {
-                                return;
-                            }
-                        } else {
-                            if (!confirm(`Delete ${personName}? They will be removed from "${personGroup}".`)) {
-                                return;
-                            }
-                        }
-                    } else {
-                        if (!confirm(`Delete ${personName}?`)) {
-                            return;
-                        }
-                    }
-
-                    const newPeople = editingPeople.filter((_, i) => i !== index);
-                    let newGroups = editingGroups.map(group => ({
-                        ...group,
-                        members: group.members.filter(m => m !== personName)
-                    }));
-
-                    // Remove empty groups
-                    newGroups = newGroups.filter(group => group.members.length > 0);
-
-                    setEditingPeople(newPeople);
-                    setEditingGroups(newGroups);
-                };
-
-                // Get which group a person belongs to
-                const getPersonGroup = (person) => {
-                    for (const group of editingGroups) {
-                        if (group.members.includes(person)) {
-                            return group.name;
-                        }
-                    }
-                    return null;
-                };
-
-                // Change person's group assignment
-                const changePersonGroup = (person, newGroupName) => {
-                    // Remove person from all groups
-                    const newGroups = editingGroups.map(group => ({
-                        ...group,
-                        members: group.members.filter(m => m !== person)
-                    }));
-
-                    // Add person to the new group
-                    const groupIndex = newGroups.findIndex(g => g.name === newGroupName);
-                    if (groupIndex !== -1) {
-                        newGroups[groupIndex].members.push(person);
-                    }
-
-                    setEditingGroups(newGroups);
-                };
-
-                const addGroup = () => {
-                    setNewGroupName('');
-                    setShowGroupModal(true);
-                };
-
-                const saveGroup = () => {
-                    if (!newGroupName.trim()) return;
-                    if (editingGroupIndex !== null) {
-                        // Renaming existing group
-                        const newGroups = [...editingGroups];
-                        newGroups[editingGroupIndex].name = newGroupName.trim();
-                        setEditingGroups(newGroups);
-                        setEditingGroupIndex(null);
-                    } else {
-                        // Adding new group
-                        setEditingGroups([...editingGroups, { name: newGroupName.trim(), members: [] }]);
-                    }
-                    setShowGroupModal(false);
-                };
-
-                const startEditGroupName = (index) => {
-                    setNewGroupName(editingGroups[index].name);
-                    setEditingGroupIndex(index);
-                    setShowGroupModal(true);
-                };
-
-                const [showDeleteGroupModal, setShowDeleteGroupModal] = useState(false);
-                const [groupToDelete, setGroupToDelete] = useState(null);
-                const [reassignToGroup, setReassignToGroup] = useState('');
-                const [createGroupForReassign, setCreateGroupForReassign] = useState(false);
-                const [newGroupForReassign, setNewGroupForReassign] = useState('');
-
-                const deleteGroup = (index) => {
-                    const group = editingGroups[index];
-
-                    if (group.members.length === 0) {
-                        // No members, delete directly
-                        if (confirm(`Delete the "${group.name}" group?`)) {
-                            const newGroups = editingGroups.filter((_, i) => i !== index);
-                            setEditingGroups(newGroups);
-                        }
-                    } else {
-                        // Has members, show reassignment modal
-                        setGroupToDelete(index);
-                        setReassignToGroup('');
-                        setCreateGroupForReassign(false);
-                        setNewGroupForReassign('');
-                        setShowDeleteGroupModal(true);
-                    }
-                };
-
-                const confirmDeleteGroup = () => {
-                    if (groupToDelete === null) return;
-
-                    const group = editingGroups[groupToDelete];
-                    let targetGroupName = '';
-
-                    if (createGroupForReassign) {
-                        if (!newGroupForReassign.trim()) {
-                            alert('Please enter a group name');
-                            return;
-                        }
-                        targetGroupName = newGroupForReassign.trim();
-
-                        // Check if group already exists
-                        if (editingGroups.some(g => g.name === targetGroupName)) {
-                            alert('Group already exists');
-                            return;
-                        }
-                    } else {
-                        if (!reassignToGroup) {
-                            alert('Please select a group or create a new one');
-                            return;
-                        }
-                        targetGroupName = reassignToGroup;
-                    }
-
-                    // Reassign members
-                    let newGroups = [...editingGroups];
-
-                    if (createGroupForReassign) {
-                        // Create new group with the members
-                        newGroups.push({ name: targetGroupName, members: [...group.members] });
-                    } else {
-                        // Add members to existing group
-                        newGroups = newGroups.map(g => {
-                            if (g.name === targetGroupName) {
-                                return { ...g, members: [...g.members, ...group.members] };
-                            }
-                            return g;
-                        });
-                    }
-
-                    // Remove the deleted group
-                    newGroups = newGroups.filter((_, i) => i !== groupToDelete);
-
-                    setEditingGroups(newGroups);
-                    setShowDeleteGroupModal(false);
-                    setGroupToDelete(null);
-                };
-
-                const getMemberCount = (groupName) => {
-                    const group = editingGroups.find(g => g.name === groupName);
-                    return group ? group.members.length : 0;
-                };
-
-                const saveSettings = () => {
-                    const newConfig = {
-                        people: editingPeople,
-                        groups: editingGroups
-                    };
-
-                    // Check if there's an active bill split
-                    if (hasActiveSplit()) {
-                        const { changes, isDestructive } = analyzeConfigChanges(initialConfig, newConfig);
-
-                        if (isDestructive) {
-                            // Show warning modal
-                            setConfigChanges(changes);
-                            setPendingConfig(newConfig);
-                            setShowResetWarning(true);
-                            return;
-                        }
-                    }
-
-                    // No active split or non-destructive changes - apply immediately
-                    setConfig(newConfig);
-                    saveConfig(newConfig);
-                    setShowSettings(false);
-                };
-
-                return (
-                    <div className="card settings-container">
-                        <h1 className="title">Settings</h1>
-                        <p className="subtitle">Manage people and group assignments</p>
-
-                        {hasActiveSplit() && (
-                            <div className="active-split-notice">
-                                <div className="active-split-notice-icon">⚠️</div>
-                                <div className="active-split-notice-text">
-                                    Active bill split in progress. Some changes will reset your progress.
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="settings-section">
-                            <div className="settings-section-title">People & Group Assignment</div>
-                            <table className="settings-table">
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Group</th>
-                                        <th style={{ width: '100px' }}>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {editingPeople.map((person, index) => (
-                                        <tr key={index}>
-                                            <td style={{ fontWeight: '600', color: '#1f2937' }}>{person}</td>
-                                            <td>
-                                                <select
-                                                    className="group-select"
-                                                    value={getPersonGroup(person) || ''}
-                                                    onChange={(e) => changePersonGroup(person, e.target.value)}
-                                                >
-                                                    {editingGroups.map(group => (
-                                                        <option key={group.name} value={group.name}>{group.name}</option>
-                                                    ))}
-                                                </select>
-                                            </td>
-                                            <td>
-                                                <div className="item-actions">
-                                                    <button className="icon-button delete" onClick={() => deletePerson(index)}>🗑️</button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                            <button className="add-button" onClick={addPerson}>+ Add Person</button>
-                        </div>
-
-                        <div className="settings-section">
-                            <div className="settings-section-title">Manage Groups</div>
-                            <div className="group-list">
-                                {editingGroups.map((group, index) => (
-                                    <div key={index} className="group-item">
-                                        <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-                                            <span className="group-name-display">{group.name}</span>
-                                            <span className="group-member-count">({getMemberCount(group.name)} {getMemberCount(group.name) === 1 ? 'person' : 'people'})</span>
-                                        </div>
-                                        <div className="item-actions">
-                                            <button className="icon-button" onClick={() => startEditGroupName(index)}>✏️</button>
-                                            <button className="icon-button delete" onClick={() => deleteGroup(index)}>🗑️</button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            <button className="add-button" onClick={addGroup}>+ Add Group</button>
-                        </div>
-
-                        <div className="button-group" style={{ marginTop: '24px' }}>
-                            <button className="button button-back" onClick={() => setShowSettings(false)}>Cancel</button>
-                            <button className="button button-primary" onClick={saveSettings}>Save Changes</button>
-                        </div>
-
-                        {showPersonModal && (
-                            <div className="modal-overlay" onClick={() => setShowPersonModal(false)}>
-                                <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
-                                    <h2 className="modal-title">Add Person</h2>
-
-                                    {validationError && (
-                                        <div className="error-message">
-                                            {validationError}
-                                        </div>
-                                    )}
-
-                                    <div className="form-group">
-                                        <label className="form-label">Name *</label>
-                                        <input
-                                            className="form-input"
-                                            type="text"
-                                            value={newPersonName}
-                                            onChange={(e) => {
-                                                setNewPersonName(e.target.value);
-                                                setValidationError('');
-                                            }}
-                                            placeholder="Enter name"
-                                            autoFocus
-                                            onKeyPress={(e) => {
-                                                if (e.key === 'Enter' && !isCreatingNewGroup) savePerson();
-                                            }}
-                                        />
-                                    </div>
-
-                                    <div className="form-group">
-                                        <label className="form-label">Group *</label>
-                                        {!isCreatingNewGroup ? (
-                                            <>
-                                                <select
-                                                    className="form-input"
-                                                    value={selectedGroup}
-                                                    onChange={(e) => {
-                                                        if (e.target.value === '__create_new__') {
-                                                            setIsCreatingNewGroup(true);
-                                                            setSelectedGroup('');
-                                                        } else {
-                                                            setSelectedGroup(e.target.value);
-                                                            setValidationError('');
-                                                        }
-                                                    }}
-                                                    style={{ cursor: 'pointer' }}
-                                                >
-                                                    <option value="">Select a group...</option>
-                                                    {editingGroups.map(group => (
-                                                        <option key={group.name} value={group.name}>{group.name}</option>
-                                                    ))}
-                                                    <option value="__create_new__">➕ Create New Group...</option>
-                                                </select>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <input
-                                                    className="form-input"
-                                                    type="text"
-                                                    value={newGroupForPerson}
-                                                    onChange={(e) => {
-                                                        setNewGroupForPerson(e.target.value);
-                                                        setValidationError('');
-                                                    }}
-                                                    placeholder="Enter new group name"
-                                                    onKeyPress={(e) => {
-                                                        if (e.key === 'Enter') savePerson();
-                                                    }}
-                                                />
-                                                <div style={{ marginTop: '8px' }}>
-                                                    <a
-                                                        href="#"
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            setIsCreatingNewGroup(false);
-                                                            setNewGroupForPerson('');
-                                                        }}
-                                                        style={{ color: '#667eea', fontSize: '14px', textDecoration: 'none' }}
-                                                    >
-                                                        ← Use Existing Group
-                                                    </a>
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-
-                                    <div className="modal-actions">
-                                        <button className="button button-back" onClick={() => setShowPersonModal(false)}>Cancel</button>
-                                        <button className="button button-primary" onClick={savePerson}>Add Person</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {showGroupModal && (
-                            <div className="modal-overlay" onClick={() => setShowGroupModal(false)}>
-                                <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
-                                    <h2 className="modal-title">{editingGroupIndex !== null ? 'Rename Group' : 'Add Group'}</h2>
-                                    <div className="form-group">
-                                        <label className="form-label">Group Name</label>
-                                        <input
-                                            className="form-input"
-                                            type="text"
-                                            value={newGroupName}
-                                            onChange={(e) => setNewGroupName(e.target.value)}
-                                            placeholder="Enter group name"
-                                            autoFocus
-                                            onKeyPress={(e) => {
-                                                if (e.key === 'Enter') saveGroup();
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="modal-actions">
-                                        <button className="button button-back" onClick={() => setShowGroupModal(false)}>Cancel</button>
-                                        <button className="button button-primary" onClick={saveGroup}>
-                                            {editingGroupIndex !== null ? 'Rename' : 'Add'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {showDeleteGroupModal && groupToDelete !== null && (
-                            <div className="modal-overlay" onClick={() => setShowDeleteGroupModal(false)}>
-                                <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-                                    <h2 className="modal-title">Delete Group</h2>
-
-                                    <div className="warning-box">
-                                        <p className="warning-title">
-                                            The "{editingGroups[groupToDelete].name}" group has {editingGroups[groupToDelete].members.length} {editingGroups[groupToDelete].members.length === 1 ? 'person' : 'people'}.
-                                        </p>
-                                        <p className="warning-text">
-                                            What should we do with {editingGroups[groupToDelete].members.length === 1 ? 'them' : 'them'}?
-                                        </p>
-                                    </div>
-
-                                    <div className="form-group">
-                                        <label className="form-label">Move people to:</label>
-                                        {!createGroupForReassign ? (
-                                            <>
-                                                <select
-                                                    className="form-input"
-                                                    value={reassignToGroup}
-                                                    onChange={(e) => {
-                                                        if (e.target.value === '__create_new__') {
-                                                            setCreateGroupForReassign(true);
-                                                            setReassignToGroup('');
-                                                        } else {
-                                                            setReassignToGroup(e.target.value);
-                                                        }
-                                                    }}
-                                                    style={{ cursor: 'pointer' }}
-                                                >
-                                                    <option value="">Select a group...</option>
-                                                    {editingGroups.filter((_, i) => i !== groupToDelete).map(group => (
-                                                        <option key={group.name} value={group.name}>{group.name}</option>
-                                                    ))}
-                                                    <option value="__create_new__">➕ Create New Group...</option>
-                                                </select>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <input
-                                                    className="form-input"
-                                                    type="text"
-                                                    value={newGroupForReassign}
-                                                    onChange={(e) => setNewGroupForReassign(e.target.value)}
-                                                    placeholder="Enter new group name"
-                                                    autoFocus
-                                                />
-                                                <div style={{ marginTop: '8px' }}>
-                                                    <a
-                                                        href="#"
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            setCreateGroupForReassign(false);
-                                                            setNewGroupForReassign('');
-                                                        }}
-                                                        style={{ color: '#667eea', fontSize: '14px', textDecoration: 'none' }}
-                                                    >
-                                                        ← Use Existing Group
-                                                    </a>
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-
-                                    <div className="modal-actions">
-                                        <button className="button button-back" onClick={() => setShowDeleteGroupModal(false)}>Cancel</button>
-                                        <button className="button button-primary" onClick={confirmDeleteGroup}>
-                                            Delete Group
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                );
-            };
-
             const currentItem = items[currentItemIndex];
-            const progress = items.length > 0 ? (currentItemIndex / items.length) * 100 : 0;
+            const progress = items.length > 0 ? ((currentItemIndex + 1) / items.length) * 100 : 0;
             const totalPercentage = getTotalPercentage();
             const currentQty = currentItem ? (parseFloat(currentItem.quantity) || 1) : 1;
             const totalQty = getTotalQuantity();
-
-            // Reset Warning Modal
-            const ResetWarningModal = () => (
-                <div className="modal-overlay">
-                    <div className="modal-content" style={{ maxWidth: '500px' }}>
-                        <h2 className="modal-title">Reset Bill Split?</h2>
-
-                        <div className="warning-box">
-                            <p className="warning-title">
-                                Changing the household configuration will reset your current bill split progress.
-                            </p>
-                            <p className="warning-text">
-                                Your item assignments will be reset, but you'll keep the same receipt.
-                            </p>
-                        </div>
-
-                        <div className="form-group">
-                            <label className="form-label" style={{ fontWeight: 'bold', marginBottom: '12px' }}>Changes made:</label>
-                            <div style={{ background: '#f9fafb', padding: '16px', borderRadius: '8px', border: '1px solid #d1d5db' }}>
-                                <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                                    {configChanges.map((change, idx) => (
-                                        <li key={idx} style={{ color: '#4b5563', marginBottom: '6px' }}>{change}</li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </div>
-
-                        <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '16px' }}>
-                            Continue with these changes?
-                        </p>
-
-                        <div className="modal-actions">
-                            <button
-                                className="button button-back"
-                                onClick={() => {
-                                    setShowResetWarning(false);
-                                    setPendingConfig(null);
-                                    setConfigChanges([]);
-                                }}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                className="button button-primary"
-                                style={{ background: '#ef4444' }}
-                                onClick={() => {
-                                    // Apply the pending config
-                                    setConfig(pendingConfig);
-                                    saveConfig(pendingConfig);
-                                    // Reset the bill split
-                                    resetBillSplit();
-                                    // Close modals
-                                    setShowResetWarning(false);
-                                    setShowSettings(false);
-                                    setPendingConfig(null);
-                                    setConfigChanges([]);
-                                }}
-                            >
-                                Continue & Reset
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            );
-
-            if (showSettings) {
-                return (
-                    <>
-                        <SettingsModal />
-                        {showResetWarning && <ResetWarningModal />}
-                    </>
-                );
-            }
 
             if (loading) {
                 return (
@@ -1379,14 +512,7 @@
                 const totalBill = Object.values(totals).reduce((sum, val) => sum + val, 0);
 
                 return (
-                    <div className="card" style={{ position: 'relative' }}>
-                        <button
-                            className={`settings-button ${hasActiveSplit() ? 'active-split' : ''}`}
-                            onClick={() => setShowSettings(true)}
-                        >
-                            ⚙️
-                        </button>
-
+                    <div className="card">
                         <h1 className="title">Bill Summary</h1>
                         <p className="subtitle">Here's how much each person owes</p>
 
@@ -1396,25 +522,45 @@
                         </div>
 
                         <div className="summary-grid">
-                            {config.people.map(person => (
-                                <div key={person} className="person-card">
-                                    <div className="person-name">{person}</div>
-                                    <div className="person-amount">£{totals[person].toFixed(2)}</div>
-                                </div>
-                            ))}
+                            <div className="person-card">
+                                <div className="person-name">You</div>
+                                <div className="person-amount">£{totals.you.toFixed(2)}</div>
+                            </div>
+
+                            <div className="person-card">
+                                <div className="person-name">Lisa</div>
+                                <div className="person-amount">£{totals.lisa.toFixed(2)}</div>
+                            </div>
+
+                            <div className="person-card">
+                                <div className="person-name">Molly</div>
+                                <div className="person-amount">£{totals.molly.toFixed(2)}</div>
+                            </div>
+
+                            <div className="person-card">
+                                <div className="person-name">Rosie</div>
+                                <div className="person-amount">£{totals.rosie.toFixed(2)}</div>
+                            </div>
+
+                            <div className="person-card">
+                                <div className="person-name">Stu</div>
+                                <div className="person-amount">£{totals.stu.toFixed(2)}</div>
+                            </div>
+
+                            <div className="person-card">
+                                <div className="person-name">Joe</div>
+                                <div className="person-amount">£{totals.joe.toFixed(2)}</div>
+                            </div>
                         </div>
 
-                        {config.people.length > 1 && (
-                            <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '14px', color: '#6b7280' }}>
-                                <strong>What others owe {config.people[0]}:</strong><br/>
-                                {config.people.slice(1).map((person, idx) => (
-                                    <span key={person}>
-                                        {person}: £{totals[person].toFixed(2)}
-                                        {idx < config.people.length - 2 ? ' | ' : ''}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
+                        <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '14px', color: '#6b7280' }}>
+                            <strong>What others owe you:</strong><br/>
+                            Lisa: £{totals.lisa.toFixed(2)} |
+                            Molly: £{totals.molly.toFixed(2)} |
+                            Rosie: £{totals.rosie.toFixed(2)} |
+                            Stu: £{totals.stu.toFixed(2)} |
+                            Joe: £{totals.joe.toFixed(2)}
+                        </div>
 
                         <button className="button button-back" onClick={() => {
                             setShowSummary(false);
@@ -1429,14 +575,7 @@
             if (items.length > 0 && currentItem) {
                 if (showCustomSplit) {
                     return (
-                        <div className="card" style={{ position: 'relative' }}>
-                            <button
-                                className={`settings-button ${hasActiveSplit() ? 'active-split' : ''}`}
-                                onClick={() => setShowSettings(true)}
-                            >
-                                ⚙️
-                            </button>
-
+                        <div className="card">
                             <h2 className="title" style={{ fontSize: '24px' }}>Custom Split</h2>
                             <p className="subtitle">{currentItem.name}</p>
 
@@ -1461,23 +600,23 @@
                                         Item Price: £{currentItem.price.toFixed(2)}
                                     </div>
 
-                                    {config.people.map(person => (
+                                    {['you', 'lisa', 'molly', 'rosie', 'stu', 'joe'].map(person => (
                                         <div key={person} className="split-person-row">
                                             <div className="split-person-name">
-                                                {person}
+                                                {person.charAt(0).toUpperCase() + person.slice(1)}
                                             </div>
                                             <div className="split-controls">
                                                 <button
                                                     className="split-button"
                                                     onClick={() => updatePercentage(person, -5)}
-                                                    disabled={(customSplit[person] || 0) <= 0}
+                                                    disabled={customSplit[person] <= 0}
                                                 >
                                                     −
                                                 </button>
                                                 <input
                                                     type="number"
                                                     className="split-input"
-                                                    value={(customSplit[person] || 0).toFixed(2)}
+                                                    value={customSplit[person].toFixed(2)}
                                                     onChange={(e) => setPercentage(person, e.target.value)}
                                                     min="0"
                                                     max="100"
@@ -1487,13 +626,13 @@
                                                 <button
                                                     className="split-button"
                                                     onClick={() => updatePercentage(person, 5)}
-                                                    disabled={(customSplit[person] || 0) >= 100}
+                                                    disabled={customSplit[person] >= 100}
                                                 >
                                                     +
                                                 </button>
                                             </div>
                                             <div className="split-amount">
-                                                £{((currentItem.price * (customSplit[person] || 0)) / 100).toFixed(2)}
+                                                £{((currentItem.price * customSplit[person]) / 100).toFixed(2)}
                                             </div>
                                         </div>
                                     ))}
@@ -1537,22 +676,35 @@
                                         Total Quantity: {currentQty} | Price: £{currentItem.price.toFixed(2)}
                                     </div>
 
-                                    {config.groups.map(group => (
-                                        <div key={group.name} className="quantity-split-row">
-                                            <div className="quantity-split-label">{group.name}:</div>
-                                            <input
-                                                type="number"
-                                                className="quantity-input"
-                                                value={quantitySplit[group.name] || 0}
-                                                onChange={(e) => updateQuantity(group.name, e.target.value)}
-                                                min="0"
-                                                max={currentQty}
-                                            />
-                                            <div style={{ fontSize: '14px', color: '#92400e' }}>
-                                                £{((currentItem.price / currentQty) * (quantitySplit[group.name] || 0)).toFixed(2)}
-                                            </div>
+                                    <div className="quantity-split-row">
+                                        <div className="quantity-split-label">You & Lisa:</div>
+                                        <input
+                                            type="number"
+                                            className="quantity-input"
+                                            value={quantitySplit.youLisa}
+                                            onChange={(e) => updateQuantity('youLisa', e.target.value)}
+                                            min="0"
+                                            max={currentQty}
+                                        />
+                                        <div style={{ fontSize: '14px', color: '#92400e' }}>
+                                            £{((currentItem.price / currentQty) * quantitySplit.youLisa).toFixed(2)}
                                         </div>
-                                    ))}
+                                    </div>
+
+                                    <div className="quantity-split-row">
+                                        <div className="quantity-split-label">The Kids:</div>
+                                        <input
+                                            type="number"
+                                            className="quantity-input"
+                                            value={quantitySplit.kids}
+                                            onChange={(e) => updateQuantity('kids', e.target.value)}
+                                            min="0"
+                                            max={currentQty}
+                                        />
+                                        <div style={{ fontSize: '14px', color: '#92400e' }}>
+                                            £{((currentItem.price / currentQty) * quantitySplit.kids).toFixed(2)}
+                                        </div>
+                                    </div>
 
                                     <div className="quantity-total" style={{
                                         background: totalQty === currentQty ? '#d1fae5' : '#fee2e2',
@@ -1605,7 +757,7 @@
                                     {Object.entries(currentAssignment.splits).map(([person, percent]) => (
                                         percent > 0 && (
                                             <div key={person} className="assignment-detail-row">
-                                                <span>{person}:</span>
+                                                <span>{person.charAt(0).toUpperCase() + person.slice(1)}:</span>
                                                 <span>{percent.toFixed(2)}% (£{((currentItem.price * percent) / 100).toFixed(2)})</span>
                                             </div>
                                         )
@@ -1620,12 +772,14 @@
                             <div className="assignment-indicator">
                                 <div className="assignment-title">Quantity Split:</div>
                                 <div className="assignment-detail">
-                                    {Object.entries(currentAssignment.splits).map(([groupName, qty]) => (
-                                        <div key={groupName} className="assignment-detail-row">
-                                            <span>{groupName}:</span>
-                                            <span>{qty} items (£{(pricePerUnit * qty).toFixed(2)})</span>
-                                        </div>
-                                    ))}
+                                    <div className="assignment-detail-row">
+                                        <span>You & Lisa:</span>
+                                        <span>{currentAssignment.splits.youLisa} items (£{(pricePerUnit * currentAssignment.splits.youLisa).toFixed(2)})</span>
+                                    </div>
+                                    <div className="assignment-detail-row">
+                                        <span>The Kids:</span>
+                                        <span>{currentAssignment.splits.kids} items (£{(pricePerUnit * currentAssignment.splits.kids).toFixed(2)})</span>
+                                    </div>
                                 </div>
                             </div>
                         );
@@ -1633,14 +787,7 @@
                 };
 
                 return (
-                    <div className="card" style={{ position: 'relative' }}>
-                        <button
-                            className={`settings-button ${hasActiveSplit() ? 'active-split' : ''}`}
-                            onClick={() => setShowSettings(true)}
-                        >
-                            ⚙️
-                        </button>
-
+                    <div className="card">
                         <div className="progress-bar">
                             <div className="progress-fill" style={{ width: `${progress}%` }}></div>
                         </div>
@@ -1660,53 +807,22 @@
 
                         {renderAssignmentIndicator()}
 
-                        {(() => {
-                            const buttonColors = ['button-primary', 'button-secondary', 'button-tertiary'];
-                            const rows = [];
-
-                            for (let i = 0; i < config.groups.length; i += 2) {
-                                const groupsInRow = config.groups.slice(i, i + 2);
-                                rows.push(
-                                    <div key={`row-${i / 2}`} className="button-group" style={{ marginTop: i === 0 ? '0' : '16px' }}>
-                                        {groupsInRow.map((group, idx) => {
-                                            const groupIndex = i + idx;
-                                            const colorClass = buttonColors[groupIndex % buttonColors.length];
-                                            return (
-                                                <button
-                                                    key={group.name}
-                                                    className={`button ${colorClass}`}
-                                                    onClick={() => assignItem(group.name)}
-                                                >
-                                                    {group.name} ({groupIndex + 1})
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                );
-                            }
-
-                            return rows;
-                        })()}
-
-                        <div className="button-group" style={{ marginTop: '16px' }}>
-                            <button className="button button-tertiary" onClick={() => assignItem('Shared')}>
-                                Shared ({config.groups.length + 1})
+                        <div className="button-group">
+                            <button className="button button-primary" onClick={() => assignItem('You & Lisa')}>
+                                You & Lisa (1)
                             </button>
-                            <button className="button button-custom" onClick={openCustomSplit}>
-                                Custom Split ({config.groups.length + 2})
+                            <button className="button button-secondary" onClick={() => assignItem('The Kids')}>
+                                The Kids (2)
                             </button>
                         </div>
 
-                        <div style={{
-                            marginTop: '12px',
-                            padding: '8px 12px',
-                            background: '#f3f4f6',
-                            borderRadius: '8px',
-                            fontSize: '13px',
-                            color: '#6b7280',
-                            textAlign: 'center'
-                        }}>
-                            Tip: Press 1-{config.groups.length + 2} for quick assignment | ← to go back | Esc to close
+                        <div className="button-group" style={{ marginTop: '16px' }}>
+                            <button className="button button-tertiary" onClick={() => assignItem('Shared')}>
+                                Shared (3)
+                            </button>
+                            <button className="button button-custom" onClick={openCustomSplit}>
+                                Custom Split (4)
+                            </button>
                         </div>
 
                         {currentItemIndex > 0 && (
@@ -1719,11 +835,7 @@
             }
 
             return (
-                <div className="card" style={{ position: 'relative' }}>
-                    <button className="settings-button" onClick={() => setShowSettings(true)}>
-                        ⚙️
-                    </button>
-
+                <div className="card">
                     <h1 className="title">Sainsbury's Bill Splitter</h1>
                     <p className="subtitle">Upload your Sainsbury's receipt PDF to split the bill</p>
 
