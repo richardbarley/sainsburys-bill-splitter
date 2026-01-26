@@ -97,7 +97,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState } = React;
+        const { useState, useEffect } = React;
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
@@ -111,6 +111,40 @@
             const [dragOver, setDragOver] = useState(false);
             const [showCustomSplit, setShowCustomSplit] = useState(false);
             const [splitType, setSplitType] = useState('percentage'); // 'percentage' or 'quantity'
+
+            // Silent learning: save assignment history when bill is complete
+            useEffect(() => {
+                if (showSummary && items.length > 0) {
+                    try {
+                        const history = JSON.parse(localStorage.getItem('billSplitterHistory') || '{}');
+                        const now = new Date().toISOString().split('T')[0];
+
+                        items.forEach((item, idx) => {
+                            const assignment = assignments[idx];
+                            if (!assignment) return;
+
+                            let group = '';
+                            if (typeof assignment === 'string') {
+                                group = assignment;
+                            }
+
+                            if (group) {
+                                const key = item.name.toLowerCase().trim();
+                                if (!history[key]) {
+                                    history[key] = { group: '', count: 0, lastUsed: '' };
+                                }
+                                history[key].group = group;
+                                history[key].count = (history[key].count || 0) + 1;
+                                history[key].lastUsed = now;
+                            }
+                        });
+
+                        localStorage.setItem('billSplitterHistory', JSON.stringify(history));
+                    } catch (e) {
+                        console.log('Could not save history:', e);
+                    }
+                }
+            }, [showSummary, items, assignments]);
 
             // Custom split percentages (default to equal split)
             const [customSplit, setCustomSplit] = useState({
