@@ -174,11 +174,17 @@
             try { localStorage.setItem('billSplitterConfig', JSON.stringify(cfg)); } catch {}
         };
 
+        const SESSION_KEY = 'billSplitterSession';
+        const getSavedSession = () => {
+            try { return JSON.parse(localStorage.getItem(SESSION_KEY)) || {}; }
+            catch { return {}; }
+        };
+
         const BillSplitter = () => {
-            const [items, setItems] = useState([]);
-            const [currentItemIndex, setCurrentItemIndex] = useState(0);
-            const [assignments, setAssignments] = useState({});
-            const [showSummary, setShowSummary] = useState(false);
+            const [items, setItems] = useState(() => getSavedSession().items || []);
+            const [currentItemIndex, setCurrentItemIndex] = useState(() => getSavedSession().currentItemIndex || 0);
+            const [assignments, setAssignments] = useState(() => getSavedSession().assignments || {});
+            const [showSummary, setShowSummary] = useState(() => getSavedSession().showSummary || false);
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState('');
             const [dragOver, setDragOver] = useState(false);
@@ -277,8 +283,56 @@
             };
             // ────────────────────────────────────────────────────────────
 
-            // Reset quick selection when moving to a different item
-            useEffect(() => { setQuickSelectPeople([]); setSelectedGroups(new Set()); }, [currentItemIndex]);
+            // Reset/pre-populate quick selection when moving to a different item
+            useEffect(() => {
+                const existingAssignment = assignments[currentItemIndex];
+
+                // For custom/quantity splits (can't be shown via buttons) or no assignment → clear
+                if (!existingAssignment || existingAssignment.type === 'custom' || existingAssignment.type === 'quantity') {
+                    setQuickSelectPeople([]);
+                    setSelectedGroups(new Set());
+                    return;
+                }
+
+                // Named group or 'Shared' → highlight the matching group button(s) and their members
+                if (typeof existingAssignment === 'string') {
+                    if (existingAssignment === 'Shared') {
+                        setQuickSelectPeople([...config.people]);
+                        setSelectedGroups(new Set(config.groups.map(g => g.name)));
+                    } else {
+                        const group = config.groups.find(g => g.name === existingAssignment);
+                        if (group) {
+                            setQuickSelectPeople([...group.members]);
+                            setSelectedGroups(new Set([group.name]));
+                        } else {
+                            setQuickSelectPeople([]);
+                            setSelectedGroups(new Set());
+                        }
+                    }
+                // Individual people → highlight their pills only
+                } else if (existingAssignment.type === 'individuals') {
+                    setQuickSelectPeople([...existingAssignment.people]);
+                    setSelectedGroups(new Set());
+                }
+            }, [currentItemIndex]);
+
+            // Persist session to localStorage whenever key state changes
+            useEffect(() => {
+                if (items.length === 0) return;
+                try {
+                    localStorage.setItem(SESSION_KEY, JSON.stringify({
+                        items, assignments, currentItemIndex, showSummary, savedAt: Date.now()
+                    }));
+                } catch {}
+            }, [items, assignments, currentItemIndex, showSummary]);
+
+            const clearSession = () => {
+                try { localStorage.removeItem(SESSION_KEY); } catch {}
+                setItems([]);
+                setAssignments({});
+                setCurrentItemIndex(0);
+                setShowSummary(false);
+            };
 
             // ── Keyboard shortcuts ───────────────────────────────────────
             useEffect(() => {
@@ -1037,11 +1091,8 @@
                             </div>
                         )}
 
-                        <button className="button button-back" onClick={() => {
-                            setShowSummary(false);
-                            setCurrentItemIndex(items.length - 1);
-                        }} style={{ width: '100%' }}>
-                            Start Over
+                        <button className="button button-back" onClick={clearSession} style={{ width: '100%' }}>
+                            New Bill
                         </button>
                     </div>
                 );
@@ -1256,20 +1307,9 @@
                 const renderAssignmentIndicator = () => {
                     if (!currentAssignment) return null;
 
-                    if (typeof currentAssignment === 'string') {
-                        return (
-                            <div className="assignment-indicator">
-                                <div className="assignment-title">Previously assigned to: {currentAssignment}</div>
-                            </div>
-                        );
-                    } else if (currentAssignment.type === 'individuals') {
-                        return (
-                            <div className="assignment-indicator">
-                                <div className="assignment-title">Individuals: {currentAssignment.people.join(', ')}</div>
-                                <div className="assignment-detail">£{(currentItem.price / currentAssignment.people.length).toFixed(2)} each</div>
-                            </div>
-                        );
-                    } else if (currentAssignment.type === 'custom') {
+                    // For named groups, 'Shared', and individuals: the buttons/pills are pre-highlighted — no text box needed.
+                    // Only show a text indicator for complex splits that can't be represented by buttons.
+                    if (currentAssignment.type === 'custom') {
                         return (
                             <div className="assignment-indicator">
                                 <div className="assignment-title">Custom % Split:</div>
@@ -1461,6 +1501,17 @@
                                 {reviewMode ? '← Back to Summary' : '← Back'}
                             </button>
                         )}
+
+                        <div style={{ textAlign: 'center', marginTop: '14px' }}>
+                            <button
+                                onClick={clearSession}
+                                style={{ background: 'none', border: 'none', color: '#d1d5db', fontSize: '12px', cursor: 'pointer', transition: 'color 0.2s' }}
+                                onMouseEnter={e => e.target.style.color = '#6b7280'}
+                                onMouseLeave={e => e.target.style.color = '#d1d5db'}
+                            >
+                                📄 Start a new bill
+                            </button>
+                        </div>
                     </div>
                     <div className="running-totals-sidebar">
                         <div className="rt-header">Running Totals</div>
