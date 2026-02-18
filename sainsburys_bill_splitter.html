@@ -2,8 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Sainsbury's Bill Splitter</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Bill Splitter">
+    <meta name="theme-color" content="#667eea">
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -137,14 +141,29 @@
         @media (max-width: 900px) {
             .running-totals-sidebar { display: none; }
         }
+        /* Summary two-panel */
+        .summary-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+        .summary-two-panel { display: flex; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+        .summary-person-list { width: 200px; flex-shrink: 0; border-right: 1px solid #e5e7eb; }
+        .summary-breakdown { flex: 1; background: #fafafa; overflow-y: auto; max-height: 420px; }
+
         @media (max-width: 640px) {
-            .card { padding: 20px; }
+            .card { padding: 16px; }
             .title { font-size: 24px; }
             .item-name { font-size: 18px; }
             .button-group { flex-direction: column; }
             .split-person-row { flex-wrap: wrap; }
             .split-controls { width: 100%; margin-top: 8px; }
+            /* Summary: stack panels vertically on mobile */
+            .summary-header { flex-direction: column; gap: 10px; }
+            .summary-two-panel { flex-direction: column; }
+            .summary-person-list { width: 100%; border-right: none; border-bottom: 1px solid #e5e7eb; }
+            .summary-breakdown { max-height: 260px; }
+            /* Larger touch targets for person pills */
+            .quick-pill { padding: 12px 20px !important; font-size: 15px !important; }
         }
+        /* Safe area insets for iPhone notch/home bar */
+        body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
     </style>
 </head>
 <body>
@@ -1017,7 +1036,7 @@
                         <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
 
                         {/* ── Header row ── */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                        <div className="summary-header">
                             <div>
                                 <h1 className="title" style={{ marginBottom: '4px' }}>Bill Summary</h1>
                                 <p className="subtitle" style={{ marginBottom: 0 }}>
@@ -1037,10 +1056,10 @@
                         )}
 
                         {/* ── Two-panel layout ── */}
-                        <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: '12px', overflow: 'hidden', marginBottom: '16px' }}>
+                        <div className="summary-two-panel">
 
                             {/* Left: person list */}
-                            <div style={{ width: '200px', flexShrink: 0, borderRight: '1px solid #e5e7eb' }}>
+                            <div className="summary-person-list">
                                 {config.people.map((person, idx) => {
                                     const isSelected = expandedPerson === person;
                                     const personTotal = totals[person] || 0;
@@ -1075,7 +1094,7 @@
                             </div>
 
                             {/* Right: item breakdown */}
-                            <div style={{ flex: 1, background: '#fafafa', overflowY: 'auto', maxHeight: '420px' }}>
+                            <div className="summary-breakdown">
                                 {expandedPerson && breakdown[expandedPerson] ? (
                                     <div style={{ padding: '14px 16px' }}>
                                         <div style={{ fontWeight: 700, fontSize: '13px', color: '#78350f', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fafafa', paddingBottom: '8px', borderBottom: '1px solid #fde68a' }}>
@@ -1466,6 +1485,7 @@
                                                 sel ? quickSelectPeople.filter(p => p !== person)
                                                     : [...quickSelectPeople, person]
                                             )}
+                                            className="quick-pill"
                                             style={{
                                                 padding: '9px 18px',
                                                 background: sel ? '#eef2ff' : 'white',
