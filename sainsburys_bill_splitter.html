@@ -11,7 +11,7 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
-        #root { max-width: 800px; margin: 0 auto; }
+        #root { max-width: 1040px; margin: 0 auto; }
         .card { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); padding: 32px; margin-bottom: 24px; }
         .title { font-size: 32px; font-weight: bold; color: #1f2937; margin-bottom: 8px; }
         .subtitle { color: #6b7280; margin-bottom: 24px; }
@@ -83,6 +83,60 @@
         .assignment-title { font-size: 14px; font-weight: 600; color: #4338ca; margin-bottom: 8px; }
         .assignment-detail { font-size: 13px; color: #4338ca; line-height: 1.6; }
         .assignment-detail-row { display: flex; justify-content: space-between; padding: 4px 0; }
+        /* Settings */
+        .settings-btn { position: fixed; top: 20px; right: 20px; background: #6b7280; color: white; border: none; border-radius: 50%; width: 52px; height: 52px; font-size: 22px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 999; transition: all 0.2s; }
+        .settings-btn:hover { background: #4b5563; transform: scale(1.05); }
+        .cfg-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .cfg-table th { text-align: left; padding: 8px 10px; background: #f3f4f6; color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .cfg-table td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+        .cfg-table tr:last-child td { border-bottom: none; }
+        .cfg-table tr:hover td { background: #fafafa; }
+        .cfg-input { border: 1px solid #d1d5db; border-radius: 6px; padding: 4px 8px; font-size: 14px; width: 100%; }
+        .cfg-input:focus { outline: none; border-color: #667eea; }
+        .cfg-select { border: 1px solid #d1d5db; border-radius: 6px; padding: 4px 8px; font-size: 14px; background: white; }
+        .cfg-btn { padding: 4px 10px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .cfg-btn-red { background: #fee2e2; color: #991b1b; }
+        .cfg-btn-red:hover { background: #fecaca; }
+        .cfg-btn-blue { background: #e0e7ff; color: #3730a3; }
+        .cfg-btn-blue:hover { background: #c7d2fe; }
+        .cfg-btn-green { background: #d1fae5; color: #065f46; }
+        .cfg-btn-green:hover { background: #a7f3d0; }
+        .cfg-add-row td { padding: 12px 10px; background: #fafafa; }
+        .cfg-add-row input { border: 1.5px dashed #d1d5db; }
+        .cfg-section-head { display: flex; justify-content: space-between; align-items: center; margin: 20px 0 8px; }
+        .cfg-section-title { font-size: 16px; font-weight: 700; color: #1f2937; }
+        .group-tag { display: inline-block; background: #e0e7ff; color: #3730a3; font-size: 12px; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
+        .no-group-tag { display: inline-block; background: #f3f4f6; color: #9ca3af; font-size: 12px; padding: 2px 8px; border-radius: 12px; }
+        .running-totals-sidebar {
+            width: 185px;
+            flex-shrink: 0;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 20px;
+            position: sticky;
+            top: 20px;
+            align-self: flex-start;
+        }
+        .running-totals-sidebar .rt-header {
+            font-weight: 700;
+            font-size: 11px;
+            color: #9ca3af;
+            margin-bottom: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .running-totals-sidebar .rt-person { margin-bottom: 12px; }
+        .running-totals-sidebar .rt-name { font-size: 12px; color: #6b7280; margin-bottom: 2px; }
+        .running-totals-sidebar .rt-amount { font-weight: 700; font-size: 15px; }
+        .running-totals-sidebar .rt-footer {
+            border-top: 1px solid #e5e7eb;
+            margin-top: 6px;
+            padding-top: 10px;
+        }
+        @media (max-width: 900px) {
+            .running-totals-sidebar { display: none; }
+        }
         @media (max-width: 640px) {
             .card { padding: 20px; }
             .title { font-size: 24px; }
@@ -101,6 +155,25 @@
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+        const DEFAULT_CONFIG = {
+            people: ['Richard', 'Lisa', 'Molly', 'Rosie', 'Stu', 'Joe'],
+            groups: [
+                { name: 'Adults', members: ['Richard', 'Lisa'] },
+                { name: 'Kids', members: ['Molly', 'Rosie', 'Stu', 'Joe'] }
+            ]
+        };
+
+        const loadConfig = () => {
+            try {
+                const saved = localStorage.getItem('billSplitterConfig');
+                return saved ? JSON.parse(saved) : DEFAULT_CONFIG;
+            } catch { return DEFAULT_CONFIG; }
+        };
+
+        const saveConfig = (cfg) => {
+            try { localStorage.setItem('billSplitterConfig', JSON.stringify(cfg)); } catch {}
+        };
+
         const BillSplitter = () => {
             const [items, setItems] = useState([]);
             const [currentItemIndex, setCurrentItemIndex] = useState(0);
@@ -110,60 +183,121 @@
             const [error, setError] = useState('');
             const [dragOver, setDragOver] = useState(false);
             const [showCustomSplit, setShowCustomSplit] = useState(false);
-            const [splitType, setSplitType] = useState('percentage'); // 'percentage' or 'quantity'
+            const [splitType, setSplitType] = useState('percentage');
+            const [showSettings, setShowSettings] = useState(false);
+            const [config, setConfig] = useState(loadConfig());
+            const [editingPerson, setEditingPerson] = useState(null); // index being renamed
+            const [editingGroup, setEditingGroup] = useState(null);   // index being renamed
+            const [newPersonName, setNewPersonName] = useState('');
+            const [newGroupName, setNewGroupName] = useState('');
 
-            // Silent learning: save assignment history when bill is complete
-            useEffect(() => {
-                if (showSummary && items.length > 0) {
-                    try {
-                        const history = JSON.parse(localStorage.getItem('billSplitterHistory') || '{}');
-                        const now = new Date().toISOString().split('T')[0];
-
-                        items.forEach((item, idx) => {
-                            const assignment = assignments[idx];
-                            if (!assignment) return;
-
-                            let group = '';
-                            if (typeof assignment === 'string') {
-                                group = assignment;
-                            }
-
-                            if (group) {
-                                const key = item.name.toLowerCase().trim();
-                                if (!history[key]) {
-                                    history[key] = { group: '', count: 0, lastUsed: '' };
-                                }
-                                history[key].group = group;
-                                history[key].count = (history[key].count || 0) + 1;
-                                history[key].lastUsed = now;
-                            }
-                        });
-
-                        localStorage.setItem('billSplitterHistory', JSON.stringify(history));
-                    } catch (e) {
-                        console.log('Could not save history:', e);
-                    }
-                }
-            }, [showSummary, items, assignments]);
-
-            // Custom split percentages (default to equal split)
-            const [customSplit, setCustomSplit] = useState({
-                you: 0,
-                lisa: 16.67,
-                molly: 16.67,
-                rosie: 16.67,
-                stu: 16.67,
-                joe: 16.67
-            });
+            // Custom split percentages — populated dynamically in openCustomSplit
+            const [customSplit, setCustomSplit] = useState({});
 
             // Track which percentages have been manually adjusted
             const [manuallyAdjusted, setManuallyAdjusted] = useState(new Set());
+
+            // Individuals selection
+            const [selectedIndividuals, setSelectedIndividuals] = useState([]);
+
+            // Quick individual selection on main screen
+            const [quickSelectPeople, setQuickSelectPeople] = useState([]);
+
+            // Review/edit mode (jumping back from summary)
+            const [reviewMode, setReviewMode] = useState(false);
+            const [expandedPerson, setExpandedPerson] = useState(null);
 
             // Quantity-based split
             const [quantitySplit, setQuantitySplit] = useState({
                 youLisa: 0,
                 kids: 0
             });
+
+            // ── Settings helpers ────────────────────────────────────────
+            const updateConfig = (newCfg) => { setConfig(newCfg); saveConfig(newCfg); };
+
+            const getPersonGroup = (personName) =>
+                config.groups.find(g => g.members.includes(personName));
+
+            const addPerson = () => {
+                const name = newPersonName.trim();
+                if (!name || config.people.includes(name)) return;
+                updateConfig({ ...config, people: [...config.people, name] });
+                setNewPersonName('');
+            };
+
+            const removePerson = (name) => {
+                const newGroups = config.groups.map(g => ({
+                    ...g, members: g.members.filter(m => m !== name)
+                }));
+                updateConfig({ ...config, people: config.people.filter(p => p !== name), groups: newGroups });
+            };
+
+            const renamePerson = (oldName, newName) => {
+                newName = newName.trim();
+                if (!newName || newName === oldName) { setEditingPerson(null); return; }
+                const newPeople = config.people.map(p => p === oldName ? newName : p);
+                const newGroups = config.groups.map(g => ({
+                    ...g, members: g.members.map(m => m === oldName ? newName : m)
+                }));
+                updateConfig({ ...config, people: newPeople, groups: newGroups });
+                setEditingPerson(null);
+            };
+
+            const togglePersonGroup = (personName, groupName) => {
+                const newGroups = config.groups.map(g => {
+                    if (g.name !== groupName) return g;
+                    return g.members.includes(personName)
+                        ? { ...g, members: g.members.filter(m => m !== personName) }
+                        : { ...g, members: [...g.members, personName] };
+                });
+                updateConfig({ ...config, groups: newGroups });
+            };
+
+            const addGroup = () => {
+                const name = newGroupName.trim();
+                if (!name || config.groups.find(g => g.name === name)) return;
+                updateConfig({ ...config, groups: [...config.groups, { name, members: [] }] });
+                setNewGroupName('');
+            };
+
+            const removeGroup = (groupName) => {
+                updateConfig({ ...config, groups: config.groups.filter(g => g.name !== groupName) });
+            };
+
+            const renameGroup = (oldName, newName) => {
+                newName = newName.trim();
+                if (!newName || newName === oldName) { setEditingGroup(null); return; }
+                const newGroups = config.groups.map(g => g.name === oldName ? { ...g, name: newName } : g);
+                updateConfig({ ...config, groups: newGroups });
+                setEditingGroup(null);
+            };
+            // ────────────────────────────────────────────────────────────
+
+            // Reset quick selection when moving to a different item
+            useEffect(() => { setQuickSelectPeople([]); }, [currentItemIndex]);
+
+            // ── Keyboard shortcuts ───────────────────────────────────────
+            useEffect(() => {
+                if (!items.length || showSummary || showCustomSplit || showSettings || loading) return;
+                const handleKey = (e) => {
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+                    const num = parseInt(e.key);
+                    if (!isNaN(num) && num >= 1) {
+                        if (num <= config.groups.length) {
+                            assignItem(config.groups[num - 1].name);
+                        } else if (num === config.groups.length + 1) {
+                            assignItem('Shared');
+                        } else if (num === config.groups.length + 2) {
+                            openCustomSplit();
+                        }
+                    }
+                    if (e.key === 'ArrowLeft') goBack();
+                };
+                window.addEventListener('keydown', handleKey);
+                return () => window.removeEventListener('keydown', handleKey);
+            }, [currentItemIndex, showSummary, showCustomSplit, showSettings, loading, config.groups.length, items.length]);
+            // ────────────────────────────────────────────────────────────
 
             const extractTextFromPdf = async (file) => {
                 const arrayBuffer = await file.arrayBuffer();
@@ -312,69 +446,73 @@
                 setAssignments(newAssignments);
                 setShowCustomSplit(false);
 
-                if (currentItemIndex < items.length - 1) {
+                if (reviewMode) {
+                    setReviewMode(false);
+                    setShowSummary(true);
+                } else if (currentItemIndex < items.length - 1) {
                     setCurrentItemIndex(currentItemIndex + 1);
                 } else {
                     setShowSummary(true);
                 }
             };
 
+            const makeEqualSplit = () => {
+                const count = config.people.length;
+                const split = {};
+                if (count > 0) {
+                    const base = Math.floor(10000 / count) / 100;
+                    let sum = 0;
+                    config.people.forEach((p, i) => {
+                        if (i === count - 1) {
+                            split[p] = Math.round((100 - sum) * 100) / 100;
+                        } else {
+                            split[p] = base;
+                            sum += base;
+                        }
+                    });
+                }
+                return split;
+            };
+
             const openCustomSplit = () => {
-                // Reset to equal split (all 6 people)
-                setCustomSplit({
-                    you: 16.67,
-                    lisa: 16.67,
-                    molly: 16.67,
-                    rosie: 16.67,
-                    stu: 16.67,
-                    joe: 16.65  // Slightly less to make exactly 100%
-                });
-
-                // Reset manually adjusted tracking
+                setCustomSplit(makeEqualSplit());
                 setManuallyAdjusted(new Set());
-
-                // Reset quantity split
+                setSelectedIndividuals([]);
                 const currentItem = items[currentItemIndex];
                 const qty = parseFloat(currentItem.quantity) || 1;
                 setQuantitySplit({
                     youLisa: Math.floor(qty / 2),
                     kids: Math.ceil(qty / 2)
                 });
-
-                setSplitType('percentage');
+                setSplitType('individuals');
                 setShowCustomSplit(true);
             };
 
             const redistributePercentages = (changedPerson, newValue) => {
-                const people = ['you', 'lisa', 'molly', 'rosie', 'stu', 'joe'];
+                const people = config.people;
                 const newSplit = { ...customSplit };
                 newSplit[changedPerson] = newValue;
 
-                // Mark this person as manually adjusted
                 const newManuallyAdjusted = new Set(manuallyAdjusted);
                 newManuallyAdjusted.add(changedPerson);
 
-                // Get list of people who haven't been manually adjusted (excluding the changed person)
                 const autoAdjustPeople = people.filter(p =>
                     p !== changedPerson && !newManuallyAdjusted.has(p)
                 );
 
-                // Calculate remaining percentage to distribute
                 const manualTotal = people
                     .filter(p => newManuallyAdjusted.has(p))
-                    .reduce((sum, p) => sum + newSplit[p], 0);
+                    .reduce((sum, p) => sum + (newSplit[p] || 0), 0);
 
                 const remainingPercentage = 100 - manualTotal;
 
-                // Distribute remaining percentage equally among auto-adjust people
                 if (autoAdjustPeople.length > 0) {
                     const perPerson = remainingPercentage / autoAdjustPeople.length;
                     autoAdjustPeople.forEach((p, idx) => {
-                        // Round to 2 decimal places, adjust last person to make exact 100%
                         if (idx === autoAdjustPeople.length - 1) {
                             const totalSoFar = people
                                 .filter(person => person !== p)
-                                .reduce((sum, person) => sum + newSplit[person], 0);
+                                .reduce((sum, person) => sum + (newSplit[person] || 0), 0);
                             newSplit[p] = Math.round((100 - totalSoFar) * 100) / 100;
                         } else {
                             newSplit[p] = Math.round(perPerson * 100) / 100;
@@ -400,16 +538,7 @@
             };
 
             const resetToEqualSplit = () => {
-                // Reset to equal 6-way split
-                setCustomSplit({
-                    you: 16.67,
-                    lisa: 16.67,
-                    molly: 16.67,
-                    rosie: 16.67,
-                    stu: 16.67,
-                    joe: 16.65  // Slightly less to make exactly 100%
-                });
-                // Clear manually adjusted tracking
+                setCustomSplit(makeEqualSplit());
                 setManuallyAdjusted(new Set());
             };
 
@@ -424,7 +553,13 @@
                 const currentItem = items[currentItemIndex];
                 const newAssignments = { ...assignments };
 
-                if (splitType === 'percentage') {
+                if (splitType === 'individuals') {
+                    newAssignments[currentItemIndex] = {
+                        type: 'individuals',
+                        people: [...selectedIndividuals],
+                        price: currentItem.price
+                    };
+                } else if (splitType === 'percentage') {
                     newAssignments[currentItemIndex] = {
                         type: 'custom',
                         splits: { ...customSplit },
@@ -443,7 +578,10 @@
                 setAssignments(newAssignments);
                 setShowCustomSplit(false);
 
-                if (currentItemIndex < items.length - 1) {
+                if (reviewMode) {
+                    setReviewMode(false);
+                    setShowSummary(true);
+                } else if (currentItemIndex < items.length - 1) {
                     setCurrentItemIndex(currentItemIndex + 1);
                 } else {
                     setShowSummary(true);
@@ -453,70 +591,140 @@
             const goBack = () => {
                 if (showCustomSplit) {
                     setShowCustomSplit(false);
+                } else if (reviewMode) {
+                    setReviewMode(false);
+                    setShowSummary(true);
                 } else if (currentItemIndex > 0) {
                     setCurrentItemIndex(currentItemIndex - 1);
                     setShowCustomSplit(false);
                 }
             };
 
+            const jumpToItem = (index) => {
+                setCurrentItemIndex(index);
+                setShowSummary(false);
+                setShowCustomSplit(false);
+                setReviewMode(true);
+            };
+
             const calculateSummary = () => {
-                const totals = {
-                    you: 0,
-                    lisa: 0,
-                    molly: 0,
-                    rosie: 0,
-                    stu: 0,
-                    joe: 0
-                };
+                const totals = {};
+                config.people.forEach(p => { totals[p] = 0; });
 
                 items.forEach((item, index) => {
                     const assignment = assignments[index];
-
                     if (!assignment) return;
 
                     if (typeof assignment === 'string') {
-                        // Old-style simple assignment
-                        if (assignment === 'You & Lisa') {
-                            totals.you += item.price / 2;
-                            totals.lisa += item.price / 2;
-                        } else if (assignment === 'The Kids') {
-                            totals.molly += item.price / 4;
-                            totals.rosie += item.price / 4;
-                            totals.stu += item.price / 4;
-                            totals.joe += item.price / 4;
-                        } else if (assignment === 'Shared') {
-                            const perPerson = item.price / 6;
-                            totals.you += perPerson;
-                            totals.lisa += perPerson;
-                            totals.molly += perPerson;
-                            totals.rosie += perPerson;
-                            totals.stu += perPerson;
-                            totals.joe += perPerson;
+                        if (assignment === 'Shared') {
+                            const perPerson = item.price / config.people.length;
+                            config.people.forEach(p => { totals[p] += perPerson; });
+                        } else {
+                            // Group name — find group in config
+                            const group = config.groups.find(g => g.name === assignment);
+                            if (group && group.members.length > 0) {
+                                const perPerson = item.price / group.members.length;
+                                group.members.forEach(m => { if (m in totals) totals[m] += perPerson; });
+                            }
                         }
                     } else if (assignment.type === 'custom') {
-                        // Percentage-based custom split
-                        totals.you += (item.price * assignment.splits.you) / 100;
-                        totals.lisa += (item.price * assignment.splits.lisa) / 100;
-                        totals.molly += (item.price * assignment.splits.molly) / 100;
-                        totals.rosie += (item.price * assignment.splits.rosie) / 100;
-                        totals.stu += (item.price * assignment.splits.stu) / 100;
-                        totals.joe += (item.price * assignment.splits.joe) / 100;
+                        // Map lowercase split keys → actual person names
+                        const keyMap = {};
+                        config.people.forEach(p => { keyMap[p.toLowerCase()] = p; });
+                        if (config.people.length > 0) keyMap['you'] = config.people[0];
+                        Object.entries(assignment.splits).forEach(([key, pct]) => {
+                            const name = keyMap[key] || keyMap[key.toLowerCase()];
+                            if (name && name in totals) totals[name] += (item.price * pct) / 100;
+                        });
+                    } else if (assignment.type === 'individuals') {
+                        if (assignment.people && assignment.people.length > 0) {
+                            const perPerson = item.price / assignment.people.length;
+                            assignment.people.forEach(p => { if (p in totals) totals[p] += perPerson; });
+                        }
                     } else if (assignment.type === 'quantity') {
-                        // Quantity-based split
+                        // Quantity split: group 0 = youLisa, group 1 = kids
                         const pricePerUnit = item.price / assignment.totalQty;
-                        const youLisaTotal = pricePerUnit * assignment.splits.youLisa;
-                        const kidsTotal = pricePerUnit * assignment.splits.kids;
-
-                        totals.you += youLisaTotal / 2;
-                        totals.lisa += youLisaTotal / 2;
-                        totals.molly += kidsTotal / 4;
-                        totals.rosie += kidsTotal / 4;
-                        totals.stu += kidsTotal / 4;
-                        totals.joe += kidsTotal / 4;
+                        const g0 = config.groups[0];
+                        const g1 = config.groups[1];
+                        if (g0 && g0.members.length > 0) {
+                            const amt = (pricePerUnit * assignment.splits.youLisa) / g0.members.length;
+                            g0.members.forEach(m => { if (m in totals) totals[m] += amt; });
+                        }
+                        if (g1 && g1.members.length > 0) {
+                            const amt = (pricePerUnit * assignment.splits.kids) / g1.members.length;
+                            g1.members.forEach(m => { if (m in totals) totals[m] += amt; });
+                        }
                     }
                 });
 
                 return totals;
+            };
+
+            const buildBreakdown = () => {
+                const breakdown = {};
+                config.people.forEach(p => { breakdown[p] = []; });
+                const push = (person, name, amount, index, totalPrice, splitLabel) => {
+                    if (person in breakdown) breakdown[person].push({ name, amount, index, totalPrice, splitLabel });
+                };
+                const formatOthers = (allPeople, self) => {
+                    const others = allPeople.filter(p => p !== self);
+                    if (others.length === 0) return 'Just you';
+                    if (others.length === 1) return `Split with ${others[0]}`;
+                    return `Split with ${others.slice(0, -1).join(', ')} & ${others[others.length - 1]}`;
+                };
+                items.forEach((item, index) => {
+                    const a = assignments[index];
+                    if (!a) return;
+                    if (typeof a === 'string') {
+                        if (a === 'Shared') {
+                            const amt = item.price / config.people.length;
+                            const label = `Shared (${config.people.length} ways)`;
+                            config.people.forEach(p => push(p, item.name, amt, index, item.price, label));
+                        } else {
+                            const group = config.groups.find(g => g.name === a);
+                            if (group && group.members.length > 0) {
+                                const amt = item.price / group.members.length;
+                                const label = group.members.length > 1
+                                    ? `${group.name} (${group.members.length} members)`
+                                    : group.name;
+                                group.members.forEach(m => push(m, item.name, amt, index, item.price, label));
+                            }
+                        }
+                    } else if (a.type === 'individuals') {
+                        if (a.people && a.people.length > 0) {
+                            const amt = item.price / a.people.length;
+                            a.people.forEach(p => {
+                                const label = formatOthers(a.people, p);
+                                push(p, item.name, amt, index, item.price, label);
+                            });
+                        }
+                    } else if (a.type === 'custom') {
+                        const keyMap = {};
+                        config.people.forEach(p => { keyMap[p.toLowerCase()] = p; });
+                        if (config.people.length > 0) keyMap['you'] = config.people[0];
+                        Object.entries(a.splits).forEach(([key, pct]) => {
+                            const name = keyMap[key] || keyMap[key.toLowerCase()];
+                            if (name) {
+                                const label = `Custom split (${pct.toFixed(0)}%)`;
+                                push(name, item.name, (item.price * pct) / 100, index, item.price, label);
+                            }
+                        });
+                    } else if (a.type === 'quantity') {
+                        const ppu = item.price / a.totalQty;
+                        const g0 = config.groups[0], g1 = config.groups[1];
+                        if (g0 && g0.members.length > 0) {
+                            const amt = (ppu * a.splits.youLisa) / g0.members.length;
+                            const label = `${g0.name}: ${a.splits.youLisa} of ${a.totalQty} items`;
+                            g0.members.forEach(m => push(m, item.name, amt, index, item.price, label));
+                        }
+                        if (g1 && g1.members.length > 0) {
+                            const amt = (ppu * a.splits.kids) / g1.members.length;
+                            const label = `${g1.name}: ${a.splits.kids} of ${a.totalQty} items`;
+                            g1.members.forEach(m => push(m, item.name, amt, index, item.price, label));
+                        }
+                    }
+                });
+                return breakdown;
             };
 
             const getTotalPercentage = () => {
@@ -533,9 +741,172 @@
             const currentQty = currentItem ? (parseFloat(currentItem.quantity) || 1) : 1;
             const totalQty = getTotalQuantity();
 
+            // ── Settings Screen ─────────────────────────────────────────
+            if (showSettings) {
+                const unassigned = config.people.filter(p => !getPersonGroup(p));
+                return (
+                    <div className="card">
+                        <button className="settings-btn" onClick={() => setShowSettings(false)} title="Close settings">✕</button>
+                        <h1 className="title" style={{fontSize:'24px'}}>Settings</h1>
+                        <p className="subtitle">Manage people and groups</p>
+
+                        {/* ── People ── */}
+                        <div className="cfg-section-head">
+                            <span className="cfg-section-title">👤 People</span>
+                        </div>
+                        <table className="cfg-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Groups (click to toggle)</th>
+                                    <th style={{width:'80px'}}></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {config.people.map((person, idx) => (
+                                    <tr key={person}>
+                                        <td>
+                                            {editingPerson === idx ? (
+                                                <input
+                                                    className="cfg-input"
+                                                    defaultValue={person}
+                                                    autoFocus
+                                                    onBlur={e => renamePerson(person, e.target.value)}
+                                                    onKeyDown={e => { if (e.key === 'Enter') renamePerson(person, e.target.value); if (e.key === 'Escape') setEditingPerson(null); }}
+                                                />
+                                            ) : (
+                                                <span
+                                                    style={{cursor:'pointer', fontWeight:600}}
+                                                    onClick={() => setEditingPerson(idx)}
+                                                    title="Click to rename"
+                                                >{person} ✏️</span>
+                                            )}
+                                        </td>
+                                        <td>
+                                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                                {config.groups.length === 0
+                                                    ? <span className="no-group-tag">No groups defined</span>
+                                                    : config.groups.map(g => {
+                                                        const inGroup = g.members.includes(person);
+                                                        return (
+                                                            <button
+                                                                key={g.name}
+                                                                onClick={() => togglePersonGroup(person, g.name)}
+                                                                className="cfg-btn"
+                                                                style={{
+                                                                    border: `1.5px solid ${inGroup ? '#818cf8' : '#d1d5db'}`,
+                                                                    background: inGroup ? '#e0e7ff' : '#f9fafb',
+                                                                    color: inGroup ? '#3730a3' : '#9ca3af',
+                                                                    fontWeight: inGroup ? 700 : 500
+                                                                }}
+                                                            >
+                                                                {inGroup ? '✓ ' : ''}{g.name}
+                                                            </button>
+                                                        );
+                                                    })
+                                                }
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <button className="cfg-btn cfg-btn-red" onClick={() => removePerson(person)}>Remove</button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                <tr className="cfg-add-row">
+                                    <td colSpan="2">
+                                        <input
+                                            className="cfg-input"
+                                            placeholder="Add new person..."
+                                            value={newPersonName}
+                                            onChange={e => setNewPersonName(e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter') addPerson(); }}
+                                        />
+                                    </td>
+                                    <td>
+                                        <button className="cfg-btn cfg-btn-green" onClick={addPerson}>Add</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        {/* ── Groups ── */}
+                        <div className="cfg-section-head" style={{marginTop:'28px'}}>
+                            <span className="cfg-section-title">👥 Groups</span>
+                        </div>
+                        <table className="cfg-table">
+                            <thead>
+                                <tr>
+                                    <th>Group</th>
+                                    <th>Members</th>
+                                    <th style={{width:'80px'}}></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {config.groups.map((group, idx) => (
+                                    <tr key={group.name}>
+                                        <td>
+                                            {editingGroup === idx ? (
+                                                <input
+                                                    className="cfg-input"
+                                                    defaultValue={group.name}
+                                                    autoFocus
+                                                    onBlur={e => renameGroup(group.name, e.target.value)}
+                                                    onKeyDown={e => { if (e.key === 'Enter') renameGroup(group.name, e.target.value); if (e.key === 'Escape') setEditingGroup(null); }}
+                                                />
+                                            ) : (
+                                                <span
+                                                    style={{cursor:'pointer', fontWeight:600}}
+                                                    onClick={() => setEditingGroup(idx)}
+                                                    title="Click to rename"
+                                                >{group.name} ✏️</span>
+                                            )}
+                                        </td>
+                                        <td>
+                                            {group.members.length === 0
+                                                ? <span className="no-group-tag">Empty</span>
+                                                : group.members.map(m => <span key={m} className="group-tag" style={{marginRight:'4px'}}>{m}</span>)
+                                            }
+                                        </td>
+                                        <td>
+                                            <button className="cfg-btn cfg-btn-red" onClick={() => removeGroup(group.name)}>Remove</button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                <tr className="cfg-add-row">
+                                    <td colSpan="2">
+                                        <input
+                                            className="cfg-input"
+                                            placeholder="Add new group..."
+                                            value={newGroupName}
+                                            onChange={e => setNewGroupName(e.target.value)}
+                                            onKeyDown={e => { if (e.key === 'Enter') addGroup(); }}
+                                        />
+                                    </td>
+                                    <td>
+                                        <button className="cfg-btn cfg-btn-green" onClick={addGroup}>Add</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        {unassigned.length > 0 && (
+                            <div style={{marginTop:'16px', padding:'12px', background:'#fef3c7', borderRadius:'8px', fontSize:'13px', color:'#92400e'}}>
+                                ⚠️ Not in any group: {unassigned.join(', ')}
+                            </div>
+                        )}
+
+                        <button className="button button-primary" onClick={() => setShowSettings(false)} style={{marginTop:'24px', width:'100%'}}>
+                            Done
+                        </button>
+                    </div>
+                );
+            }
+            // ────────────────────────────────────────────────────────────
+
             if (loading) {
                 return (
                     <div className="card">
+                        <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
                         <div className="loading">Loading PDF...</div>
                     </div>
                 );
@@ -544,9 +915,13 @@
             if (showSummary) {
                 const totals = calculateSummary();
                 const totalBill = Object.values(totals).reduce((sum, val) => sum + val, 0);
+                const others = config.people.slice(1);
+                const breakdown = buildBreakdown();
+                const unassignedCount = items.filter((_, i) => !assignments[i]).length;
 
                 return (
                     <div className="card">
+                        <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
                         <h1 className="title">Bill Summary</h1>
                         <p className="subtitle">Here's how much each person owes</p>
 
@@ -555,51 +930,77 @@
                             <div className="total-bill-amount">£{totalBill.toFixed(2)}</div>
                         </div>
 
+                        {unassignedCount > 0 && (
+                            <div style={{ background: '#fee2e2', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#991b1b', fontWeight: 600 }}>
+                                ⚠️ {unassignedCount} item{unassignedCount > 1 ? 's' : ''} not yet assigned
+                            </div>
+                        )}
+
                         <div className="summary-grid">
-                            <div className="person-card">
-                                <div className="person-name">You</div>
-                                <div className="person-amount">£{totals.you.toFixed(2)}</div>
-                            </div>
-
-                            <div className="person-card">
-                                <div className="person-name">Lisa</div>
-                                <div className="person-amount">£{totals.lisa.toFixed(2)}</div>
-                            </div>
-
-                            <div className="person-card">
-                                <div className="person-name">Molly</div>
-                                <div className="person-amount">£{totals.molly.toFixed(2)}</div>
-                            </div>
-
-                            <div className="person-card">
-                                <div className="person-name">Rosie</div>
-                                <div className="person-amount">£{totals.rosie.toFixed(2)}</div>
-                            </div>
-
-                            <div className="person-card">
-                                <div className="person-name">Stu</div>
-                                <div className="person-amount">£{totals.stu.toFixed(2)}</div>
-                            </div>
-
-                            <div className="person-card">
-                                <div className="person-name">Joe</div>
-                                <div className="person-amount">£{totals.joe.toFixed(2)}</div>
-                            </div>
+                            {config.people.map(person => (
+                                <div
+                                    key={person}
+                                    className="person-card"
+                                    onClick={() => setExpandedPerson(expandedPerson === person ? null : person)}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    <div className="person-name">{person}</div>
+                                    <div className="person-amount">£{(totals[person] || 0).toFixed(2)}</div>
+                                    <div style={{ fontSize: '12px', marginTop: '6px', opacity: 0.75 }}>
+                                        {breakdown[person]?.length || 0} items {expandedPerson === person ? '▲' : '▼'}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
 
-                        <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '14px', color: '#6b7280' }}>
-                            <strong>What others owe you:</strong><br/>
-                            Lisa: £{totals.lisa.toFixed(2)} |
-                            Molly: £{totals.molly.toFixed(2)} |
-                            Rosie: £{totals.rosie.toFixed(2)} |
-                            Stu: £{totals.stu.toFixed(2)} |
-                            Joe: £{totals.joe.toFixed(2)}
-                        </div>
+                        {expandedPerson && breakdown[expandedPerson] && (
+                            <div style={{ background: '#fffbeb', border: '2px solid #fcd34d', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+                                <div style={{ fontWeight: 700, fontSize: '15px', color: '#78350f', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span>📋 {expandedPerson}'s items</span>
+                                    <span>£{(totals[expandedPerson] || 0).toFixed(2)}</span>
+                                </div>
+                                {breakdown[expandedPerson].length === 0 ? (
+                                    <div style={{ color: '#92400e', fontSize: '14px', opacity: 0.7 }}>No items assigned</div>
+                                ) : (
+                                    breakdown[expandedPerson].map((entry, i) => (
+                                        <div key={i} style={{ padding: '9px 0', borderBottom: i < breakdown[expandedPerson].length - 1 ? '1px solid #fde68a' : 'none' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                <span style={{ color: '#1f2937', flex: 1, fontSize: '13px', paddingRight: '8px', fontWeight: 600, lineHeight: 1.3 }}>{entry.name}</span>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); jumpToItem(entry.index); }}
+                                                    style={{ marginLeft: '8px', background: '#e0e7ff', color: '#3730a3', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, flexShrink: 0 }}
+                                                >
+                                                    Edit
+                                                </button>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                                                <span style={{ fontSize: '11px', color: '#9ca3af', fontStyle: 'italic' }}>{entry.splitLabel}</span>
+                                                <span style={{ fontSize: '12px', whiteSpace: 'nowrap', marginLeft: '8px' }}>
+                                                    <strong style={{ color: '#92400e' }}>£{entry.amount.toFixed(2)}</strong>
+                                                    {Math.abs(entry.totalPrice - entry.amount) > 0.001 && (
+                                                        <span style={{ color: '#b45309', opacity: 0.65 }}> of £{entry.totalPrice.toFixed(2)}</span>
+                                                    )}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        )}
+
+                        {others.length > 0 && (
+                            <div style={{ textAlign: 'center', marginBottom: '20px', fontSize: '14px', color: '#6b7280' }}>
+                                <strong>What others owe you:</strong><br/>
+                                {others.map((p, i) => (
+                                    <span key={p}>{p}: £{(totals[p] || 0).toFixed(2)}{i < others.length - 1 ? ' | ' : ''}</span>
+                                ))}
+                            </div>
+                        )}
 
                         <button className="button button-back" onClick={() => {
                             setShowSummary(false);
                             setCurrentItemIndex(items.length - 1);
-                        }} style={{ marginTop: '24px', width: '100%' }}>
+                        }} style={{ width: '100%' }}>
                             Start Over
                         </button>
                     </div>
@@ -610,10 +1011,17 @@
                 if (showCustomSplit) {
                     return (
                         <div className="card">
-                            <h2 className="title" style={{ fontSize: '24px' }}>Custom Split</h2>
-                            <p className="subtitle">{currentItem.name}</p>
+                            <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
+                            <h2 className="title" style={{ fontSize: '24px' }}>Individual Split</h2>
+                            <p className="subtitle">{currentItem.name} · £{currentItem.price.toFixed(2)}</p>
 
                             <div className="split-type-toggle">
+                                <button
+                                    className={`split-type-button ${splitType === 'individuals' ? 'active' : ''}`}
+                                    onClick={() => setSplitType('individuals')}
+                                >
+                                    Individuals
+                                </button>
                                 <button
                                     className={`split-type-button ${splitType === 'percentage' ? 'active' : ''}`}
                                     onClick={() => setSplitType('percentage')}
@@ -628,29 +1036,78 @@
                                 </button>
                             </div>
 
-                            {splitType === 'percentage' ? (
+                            {splitType === 'individuals' && (
+                                <div className="custom-split-panel">
+                                    <div className="custom-split-title">Select who pays for this item</div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+                                        {config.people.map(person => {
+                                            const sel = selectedIndividuals.includes(person);
+                                            return (
+                                                <button
+                                                    key={person}
+                                                    onClick={() => setSelectedIndividuals(
+                                                        sel ? selectedIndividuals.filter(p => p !== person)
+                                                            : [...selectedIndividuals, person]
+                                                    )}
+                                                    style={{
+                                                        padding: '10px 20px',
+                                                        border: `2px solid ${sel ? '#667eea' : '#d1d5db'}`,
+                                                        borderRadius: '24px',
+                                                        background: sel ? '#eef2ff' : 'white',
+                                                        color: sel ? '#4338ca' : '#6b7280',
+                                                        fontWeight: 600,
+                                                        cursor: 'pointer',
+                                                        fontSize: '15px',
+                                                        transition: 'all 0.15s'
+                                                    }}
+                                                >
+                                                    {person}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    {selectedIndividuals.length > 0 ? (
+                                        <div style={{ textAlign: 'center', padding: '12px', background: '#d1fae5', borderRadius: '8px', color: '#065f46', fontWeight: 600, marginBottom: '16px' }}>
+                                            {selectedIndividuals.length === 1
+                                                ? `${selectedIndividuals[0]} pays £${currentItem.price.toFixed(2)}`
+                                                : `£${(currentItem.price / selectedIndividuals.length).toFixed(2)} each → ${selectedIndividuals.join(', ')}`
+                                            }
+                                        </div>
+                                    ) : (
+                                        <div style={{ textAlign: 'center', padding: '12px', background: '#fee2e2', borderRadius: '8px', color: '#991b1b', fontWeight: 600, marginBottom: '16px' }}>
+                                            Select at least one person
+                                        </div>
+                                    )}
+                                    <div className="split-actions">
+                                        <button className="button button-back" onClick={goBack}>Cancel</button>
+                                        <button className="button button-primary" onClick={applyCustomSplit} disabled={selectedIndividuals.length === 0}>
+                                            Apply
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {splitType === 'percentage' && (
                                 <div className="custom-split-panel">
                                     <div className="custom-split-title">
                                         Item Price: £{currentItem.price.toFixed(2)}
                                     </div>
 
-                                    {['you', 'lisa', 'molly', 'rosie', 'stu', 'joe'].map(person => (
+                                    {config.people.map(person => (
                                         <div key={person} className="split-person-row">
-                                            <div className="split-person-name">
-                                                {person.charAt(0).toUpperCase() + person.slice(1)}
-                                            </div>
+                                            <div className="split-person-name">{person}</div>
                                             <div className="split-controls">
                                                 <button
                                                     className="split-button"
                                                     onClick={() => updatePercentage(person, -5)}
-                                                    disabled={customSplit[person] <= 0}
+                                                    disabled={(customSplit[person] || 0) <= 0}
                                                 >
                                                     −
                                                 </button>
                                                 <input
                                                     type="number"
                                                     className="split-input"
-                                                    value={customSplit[person].toFixed(2)}
+                                                    value={(customSplit[person] || 0).toFixed(2)}
                                                     onChange={(e) => setPercentage(person, e.target.value)}
                                                     min="0"
                                                     max="100"
@@ -660,13 +1117,13 @@
                                                 <button
                                                     className="split-button"
                                                     onClick={() => updatePercentage(person, 5)}
-                                                    disabled={customSplit[person] >= 100}
+                                                    disabled={(customSplit[person] || 0) >= 100}
                                                 >
                                                     +
                                                 </button>
                                             </div>
                                             <div className="split-amount">
-                                                £{((currentItem.price * customSplit[person]) / 100).toFixed(2)}
+                                                £{((currentItem.price * (customSplit[person] || 0)) / 100).toFixed(2)}
                                             </div>
                                         </div>
                                     ))}
@@ -685,33 +1142,23 @@
                                     </div>
 
                                     <div className="split-actions">
-                                        <button className="button button-back" onClick={goBack}>
-                                            Cancel
-                                        </button>
-                                        <button
-                                            className="button button-secondary"
-                                            onClick={resetToEqualSplit}
-                                            style={{ flex: '0.8' }}
-                                        >
-                                            Reset
-                                        </button>
-                                        <button
-                                            className="button button-primary"
-                                            onClick={applyCustomSplit}
-                                            disabled={totalPercentage !== 100}
-                                        >
+                                        <button className="button button-back" onClick={goBack}>Cancel</button>
+                                        <button className="button button-secondary" onClick={resetToEqualSplit} style={{ flex: '0.8' }}>Reset</button>
+                                        <button className="button button-primary" onClick={applyCustomSplit} disabled={totalPercentage !== 100}>
                                             Apply Split
                                         </button>
                                     </div>
                                 </div>
-                            ) : (
+                            )}
+
+                            {splitType === 'quantity' && (
                                 <div className="quantity-split-panel">
                                     <div className="custom-split-title" style={{ color: '#78350f' }}>
                                         Total Quantity: {currentQty} | Price: £{currentItem.price.toFixed(2)}
                                     </div>
 
                                     <div className="quantity-split-row">
-                                        <div className="quantity-split-label">You & Lisa:</div>
+                                        <div className="quantity-split-label">{config.groups[0]?.name || 'Group 1'}:</div>
                                         <input
                                             type="number"
                                             className="quantity-input"
@@ -726,7 +1173,7 @@
                                     </div>
 
                                     <div className="quantity-split-row">
-                                        <div className="quantity-split-label">The Kids:</div>
+                                        <div className="quantity-split-label">{config.groups[1]?.name || 'Group 2'}:</div>
                                         <input
                                             type="number"
                                             className="quantity-input"
@@ -752,14 +1199,8 @@
                                     </div>
 
                                     <div className="split-actions">
-                                        <button className="button button-back" onClick={goBack}>
-                                            Cancel
-                                        </button>
-                                        <button
-                                            className="button button-primary"
-                                            onClick={applyCustomSplit}
-                                            disabled={totalQty !== currentQty}
-                                        >
+                                        <button className="button button-back" onClick={goBack}>Cancel</button>
+                                        <button className="button button-primary" onClick={applyCustomSplit} disabled={totalQty !== currentQty}>
                                             Apply Split
                                         </button>
                                     </div>
@@ -776,14 +1217,19 @@
                     if (!currentAssignment) return null;
 
                     if (typeof currentAssignment === 'string') {
-                        // Simple assignment
                         return (
                             <div className="assignment-indicator">
                                 <div className="assignment-title">Previously assigned to: {currentAssignment}</div>
                             </div>
                         );
+                    } else if (currentAssignment.type === 'individuals') {
+                        return (
+                            <div className="assignment-indicator">
+                                <div className="assignment-title">Individuals: {currentAssignment.people.join(', ')}</div>
+                                <div className="assignment-detail">£{(currentItem.price / currentAssignment.people.length).toFixed(2)} each</div>
+                            </div>
+                        );
                     } else if (currentAssignment.type === 'custom') {
-                        // Percentage-based custom split
                         return (
                             <div className="assignment-indicator">
                                 <div className="assignment-title">Custom % Split:</div>
@@ -791,7 +1237,7 @@
                                     {Object.entries(currentAssignment.splits).map(([person, percent]) => (
                                         percent > 0 && (
                                             <div key={person} className="assignment-detail-row">
-                                                <span>{person.charAt(0).toUpperCase() + person.slice(1)}:</span>
+                                                <span>{person}:</span>
                                                 <span>{percent.toFixed(2)}% (£{((currentItem.price * percent) / 100).toFixed(2)})</span>
                                             </div>
                                         )
@@ -800,18 +1246,17 @@
                             </div>
                         );
                     } else if (currentAssignment.type === 'quantity') {
-                        // Quantity-based split
                         const pricePerUnit = currentItem.price / currentAssignment.totalQty;
                         return (
                             <div className="assignment-indicator">
                                 <div className="assignment-title">Quantity Split:</div>
                                 <div className="assignment-detail">
                                     <div className="assignment-detail-row">
-                                        <span>You & Lisa:</span>
+                                        <span>{config.groups[0]?.name || 'Group 1'}:</span>
                                         <span>{currentAssignment.splits.youLisa} items (£{(pricePerUnit * currentAssignment.splits.youLisa).toFixed(2)})</span>
                                     </div>
                                     <div className="assignment-detail-row">
-                                        <span>The Kids:</span>
+                                        <span>{config.groups[1]?.name || 'Group 2'}:</span>
                                         <span>{currentAssignment.splits.kids} items (£{(pricePerUnit * currentAssignment.splits.kids).toFixed(2)})</span>
                                     </div>
                                 </div>
@@ -820,12 +1265,20 @@
                     }
                 };
 
+                const btnClasses = ['button-primary','button-secondary','button-tertiary','button-custom'];
+                const sharedNum = config.groups.length + 1;
+                const customNum = config.groups.length + 2;
+                const runningTotals = calculateSummary();
+                const runningTotal = Object.values(runningTotals).reduce((s, v) => s + v, 0);
+
                 return (
-                    <div className="card">
+                    <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+                    <div className="card" style={{ flex: 1, minWidth: 0 }}>
+                        <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
                         <div className="progress-bar">
                             <div className="progress-fill" style={{ width: `${progress}%` }}></div>
                         </div>
-                        <div className="progress-text">Item {currentItemIndex + 1} of {items.length}</div>
+                        <div className="progress-text" style={{ paddingRight: '60px' }}>Item {currentItemIndex + 1} of {items.length}</div>
 
                         <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
                             {progress.toFixed(0)}% complete
@@ -839,37 +1292,119 @@
                             </div>
                         </div>
 
+                        {reviewMode && (
+                            <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#92400e', fontWeight: 600 }}>
+                                ✏️ Editing — will return to summary when saved
+                            </div>
+                        )}
+
                         {renderAssignmentIndicator()}
 
                         <div className="button-group">
-                            <button className="button button-primary" onClick={() => assignItem('You & Lisa')}>
-                                You & Lisa (1)
-                            </button>
-                            <button className="button button-secondary" onClick={() => assignItem('The Kids')}>
-                                The Kids (2)
-                            </button>
+                            {config.groups.map((group, idx) => (
+                                <button
+                                    key={group.name}
+                                    className={`button ${btnClasses[idx % btnClasses.length]}`}
+                                    onClick={() => assignItem(group.name)}
+                                >
+                                    {group.name} ({idx + 1})
+                                </button>
+                            ))}
                         </div>
 
-                        <div className="button-group" style={{ marginTop: '16px' }}>
+                        <div className="button-group" style={{ marginTop: '12px' }}>
                             <button className="button button-tertiary" onClick={() => assignItem('Shared')}>
-                                Shared (3)
+                                Shared ({sharedNum})
                             </button>
                             <button className="button button-custom" onClick={openCustomSplit}>
-                                Custom Split (4)
+                                Individual Split ({customNum})
                             </button>
                         </div>
 
-                        {currentItemIndex > 0 && (
-                            <button className="button button-back" onClick={goBack} style={{ marginTop: '16px', width: '100%' }}>
-                                ← Back
+                        <div style={{ marginTop: '16px' }}>
+                            <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+                                Assign to individual(s):
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                                {config.people.map(person => {
+                                    const sel = quickSelectPeople.includes(person);
+                                    return (
+                                        <button
+                                            key={person}
+                                            onClick={() => setQuickSelectPeople(
+                                                sel ? quickSelectPeople.filter(p => p !== person)
+                                                    : [...quickSelectPeople, person]
+                                            )}
+                                            style={{
+                                                padding: '8px 16px',
+                                                background: sel ? '#eef2ff' : 'white',
+                                                border: `1.5px solid ${sel ? '#667eea' : '#d1d5db'}`,
+                                                borderRadius: '20px',
+                                                fontSize: '14px',
+                                                fontWeight: 600,
+                                                color: sel ? '#4338ca' : '#374151',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s'
+                                            }}
+                                        >
+                                            {person}
+                                        </button>
+                                    );
+                                })}
+                                {quickSelectPeople.length > 0 && (
+                                    <button
+                                        onClick={() => assignItem({ type: 'individuals', people: [...quickSelectPeople] })}
+                                        style={{ padding: '8px 18px', background: '#10b981', border: 'none', borderRadius: '20px', fontSize: '14px', fontWeight: 700, color: 'white', cursor: 'pointer' }}
+                                    >
+                                        ✓ Save
+                                    </button>
+                                )}
+                            </div>
+                            {quickSelectPeople.length > 0 && (
+                                <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
+                                    £{(currentItem.price / quickSelectPeople.length).toFixed(2)} each → {quickSelectPeople.join(', ')}
+                                </div>
+                            )}
+                        </div>
+
+                        {(currentItemIndex > 0 || reviewMode) && (
+                            <button
+                                className="button button-back"
+                                onClick={goBack}
+                                style={{ marginTop: '16px', width: '100%' }}
+                            >
+                                {reviewMode ? '← Back to Summary' : '← Back'}
                             </button>
                         )}
+                    </div>
+                    <div className="running-totals-sidebar">
+                        <div className="rt-header">Running Totals</div>
+                        {config.people.map(person => {
+                            const total = runningTotals[person] || 0;
+                            return (
+                                <div key={person} className="rt-person">
+                                    <div className="rt-name">{person}</div>
+                                    <div className="rt-amount" style={{ color: total > 0 ? '#059669' : '#d1d5db' }}>
+                                        £{total.toFixed(2)}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <div className="rt-footer">
+                            <div className="rt-name">Assigned so far</div>
+                            <div className="rt-amount" style={{ color: '#374151' }}>£{runningTotal.toFixed(2)}</div>
+                            <div style={{ marginTop: '8px', fontSize: '11px', color: '#9ca3af' }}>
+                                {Object.keys(assignments).length} of {items.length} items
+                            </div>
+                        </div>
+                    </div>
                     </div>
                 );
             }
 
             return (
                 <div className="card">
+                    <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
                     <h1 className="title">Sainsbury's Bill Splitter</h1>
                     <p className="subtitle">Upload your Sainsbury's receipt PDF to split the bill</p>
 
