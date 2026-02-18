@@ -1009,87 +1009,113 @@
             if (showSummary) {
                 const totals = calculateSummary();
                 const totalBill = Object.values(totals).reduce((sum, val) => sum + val, 0);
-                const others = config.people.slice(1);
                 const breakdown = buildBreakdown();
                 const unassignedCount = items.filter((_, i) => !assignments[i]).length;
 
                 return (
                     <div className="card">
                         <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
-                        <h1 className="title">Bill Summary</h1>
-                        <p className="subtitle">Here's how much each person owes</p>
 
-                        <div className="total-bill">
-                            <div className="total-bill-label">Total Bill</div>
-                            <div className="total-bill-amount">£{totalBill.toFixed(2)}</div>
+                        {/* ── Header row ── */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                            <div>
+                                <h1 className="title" style={{ marginBottom: '4px' }}>Bill Summary</h1>
+                                <p className="subtitle" style={{ marginBottom: 0 }}>
+                                    {items.length} items · {Object.keys(assignments).length} assigned
+                                </p>
+                            </div>
+                            <div style={{ background: 'linear-gradient(135deg, #fed7aa 0%, #fb923c 100%)', borderRadius: '12px', padding: '12px 20px', textAlign: 'right', flexShrink: 0 }}>
+                                <div style={{ fontSize: '11px', opacity: 0.75, marginBottom: '2px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Bill</div>
+                                <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#7c2d12' }}>£{totalBill.toFixed(2)}</div>
+                            </div>
                         </div>
 
                         {unassignedCount > 0 && (
-                            <div style={{ background: '#fee2e2', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#991b1b', fontWeight: 600 }}>
+                            <div style={{ background: '#fee2e2', borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '13px', color: '#991b1b', fontWeight: 600 }}>
                                 ⚠️ {unassignedCount} item{unassignedCount > 1 ? 's' : ''} not yet assigned
                             </div>
                         )}
 
-                        <div className="summary-grid">
-                            {config.people.map(person => (
-                                <div
-                                    key={person}
-                                    className="person-card"
-                                    onClick={() => setExpandedPerson(expandedPerson === person ? null : person)}
-                                    style={{ cursor: 'pointer' }}
-                                >
-                                    <div className="person-name">{person}</div>
-                                    <div className="person-amount">£{(totals[person] || 0).toFixed(2)}</div>
-                                    <div style={{ fontSize: '12px', marginTop: '6px', opacity: 0.75 }}>
-                                        {breakdown[person]?.length || 0} items {expandedPerson === person ? '▲' : '▼'}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                        {/* ── Two-panel layout ── */}
+                        <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: '12px', overflow: 'hidden', marginBottom: '16px' }}>
 
-                        {expandedPerson && breakdown[expandedPerson] && (
-                            <div style={{ background: '#fffbeb', border: '2px solid #fcd34d', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
-                                <div style={{ fontWeight: 700, fontSize: '15px', color: '#78350f', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span>📋 {expandedPerson}'s items</span>
-                                    <span>£{(totals[expandedPerson] || 0).toFixed(2)}</span>
-                                </div>
-                                {breakdown[expandedPerson].length === 0 ? (
-                                    <div style={{ color: '#92400e', fontSize: '14px', opacity: 0.7 }}>No items assigned</div>
-                                ) : (
-                                    breakdown[expandedPerson].map((entry, i) => (
-                                        <div key={i} style={{ padding: '9px 0', borderBottom: i < breakdown[expandedPerson].length - 1 ? '1px solid #fde68a' : 'none' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                <span style={{ color: '#1f2937', flex: 1, fontSize: '13px', paddingRight: '8px', fontWeight: 600, lineHeight: 1.3 }}>{entry.name}</span>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); jumpToItem(entry.index); }}
-                                                    style={{ marginLeft: '8px', background: '#e0e7ff', color: '#3730a3', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600, flexShrink: 0 }}
-                                                >
-                                                    Edit
-                                                </button>
+                            {/* Left: person list */}
+                            <div style={{ width: '200px', flexShrink: 0, borderRight: '1px solid #e5e7eb' }}>
+                                {config.people.map((person, idx) => {
+                                    const isSelected = expandedPerson === person;
+                                    const personTotal = totals[person] || 0;
+                                    const pct = totalBill > 0 ? (personTotal / totalBill) * 100 : 0;
+                                    const personItemCount = breakdown[person]?.length || 0;
+                                    return (
+                                        <div
+                                            key={person}
+                                            onClick={() => setExpandedPerson(isSelected ? null : person)}
+                                            style={{
+                                                padding: '12px 14px',
+                                                cursor: 'pointer',
+                                                background: isSelected ? '#fffbeb' : 'white',
+                                                borderBottom: idx < config.people.length - 1 ? '1px solid #f3f4f6' : 'none',
+                                                borderLeft: `3px solid ${isSelected ? '#f59e0b' : 'transparent'}`,
+                                                transition: 'background 0.15s'
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '5px' }}>
+                                                <span style={{ fontWeight: 700, color: '#1f2937', fontSize: '14px' }}>{person}</span>
+                                                <span style={{ fontWeight: 700, color: '#92400e', fontSize: '15px' }}>£{personTotal.toFixed(2)}</span>
                                             </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                                                <span style={{ fontSize: '11px', color: '#9ca3af', fontStyle: 'italic' }}>{entry.splitLabel}</span>
-                                                <span style={{ fontSize: '12px', whiteSpace: 'nowrap', marginLeft: '8px' }}>
-                                                    <strong style={{ color: '#92400e' }}>£{entry.amount.toFixed(2)}</strong>
-                                                    {Math.abs(entry.totalPrice - entry.amount) > 0.001 && (
-                                                        <span style={{ color: '#b45309', opacity: 0.65 }}> of £{entry.totalPrice.toFixed(2)}</span>
-                                                    )}
-                                                </span>
+                                            <div style={{ height: '3px', background: '#f3f4f6', borderRadius: '2px', marginBottom: '4px' }}>
+                                                <div style={{ height: '100%', width: `${pct}%`, background: isSelected ? '#f59e0b' : '#fbbf24', borderRadius: '2px', transition: 'width 0.3s' }} />
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+                                                {personItemCount} item{personItemCount !== 1 ? 's' : ''} · {pct.toFixed(0)}%
                                             </div>
                                         </div>
-                                    ))
+                                    );
+                                })}
+                            </div>
+
+                            {/* Right: item breakdown */}
+                            <div style={{ flex: 1, background: '#fafafa', overflowY: 'auto', maxHeight: '420px' }}>
+                                {expandedPerson && breakdown[expandedPerson] ? (
+                                    <div style={{ padding: '14px 16px' }}>
+                                        <div style={{ fontWeight: 700, fontSize: '13px', color: '#78350f', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fafafa', paddingBottom: '8px', borderBottom: '1px solid #fde68a' }}>
+                                            <span>{expandedPerson}'s items</span>
+                                            <span>£{(totals[expandedPerson] || 0).toFixed(2)}</span>
+                                        </div>
+                                        {breakdown[expandedPerson].length === 0 ? (
+                                            <div style={{ color: '#9ca3af', fontSize: '13px' }}>No items assigned</div>
+                                        ) : (
+                                            breakdown[expandedPerson].map((entry, i) => (
+                                                <div key={i} style={{ padding: '8px 0', borderBottom: i < breakdown[expandedPerson].length - 1 ? '1px solid #e5e7eb' : 'none' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                        <span style={{ color: '#1f2937', flex: 1, fontSize: '13px', paddingRight: '8px', fontWeight: 600, lineHeight: 1.3 }}>{entry.name}</span>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); jumpToItem(entry.index); }}
+                                                            style={{ marginLeft: '8px', background: '#e0e7ff', color: '#3730a3', border: 'none', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', fontSize: '11px', fontWeight: 600, flexShrink: 0 }}
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '3px' }}>
+                                                        <span style={{ fontSize: '11px', color: '#9ca3af', fontStyle: 'italic' }}>{entry.splitLabel}</span>
+                                                        <span style={{ fontSize: '12px', whiteSpace: 'nowrap', marginLeft: '8px' }}>
+                                                            <strong style={{ color: '#92400e' }}>£{entry.amount.toFixed(2)}</strong>
+                                                            {Math.abs(entry.totalPrice - entry.amount) > 0.001 && (
+                                                                <span style={{ color: '#b45309', opacity: 0.65 }}> of £{entry.totalPrice.toFixed(2)}</span>
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '120px', color: '#d1d5db', fontSize: '13px' }}>
+                                        ← Select a person to see their items
+                                    </div>
                                 )}
                             </div>
-                        )}
-
-                        {others.length > 0 && (
-                            <div style={{ textAlign: 'center', marginBottom: '20px', fontSize: '14px', color: '#6b7280' }}>
-                                <strong>What others owe you:</strong><br/>
-                                {others.map((p, i) => (
-                                    <span key={p}>{p}: £{(totals[p] || 0).toFixed(2)}{i < others.length - 1 ? ' | ' : ''}</span>
-                                ))}
-                            </div>
-                        )}
+                        </div>
 
                         <button className="button button-back" onClick={clearSession} style={{ width: '100%' }}>
                             New Bill
@@ -1352,13 +1378,12 @@
                     <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
                     <div className="card" style={{ flex: 1, minWidth: 0 }}>
                         <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
-                        <div className="progress-bar">
-                            <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px', paddingRight: '60px' }}>
+                            <span style={{ fontSize: '13px', color: '#6b7280', fontWeight: 600 }}>Item {currentItemIndex + 1} of {items.length}</span>
+                            <span style={{ fontSize: '12px', color: '#9ca3af' }}>{progress.toFixed(0)}%</span>
                         </div>
-                        <div className="progress-text" style={{ paddingRight: '60px' }}>Item {currentItemIndex + 1} of {items.length}</div>
-
-                        <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
-                            {progress.toFixed(0)}% complete
+                        <div className="progress-bar" style={{ marginBottom: '20px' }}>
+                            <div className="progress-fill" style={{ width: `${progress}%` }}></div>
                         </div>
 
                         <div className="item-card">
