@@ -203,6 +203,9 @@
             // Quick individual selection on main screen
             const [quickSelectPeople, setQuickSelectPeople] = useState([]);
 
+            // Which group preset buttons were explicitly clicked (for highlight only)
+            const [selectedGroups, setSelectedGroups] = useState(new Set());
+
             // Review/edit mode (jumping back from summary)
             const [reviewMode, setReviewMode] = useState(false);
             const [expandedPerson, setExpandedPerson] = useState(null);
@@ -275,7 +278,7 @@
             // ────────────────────────────────────────────────────────────
 
             // Reset quick selection when moving to a different item
-            useEffect(() => { setQuickSelectPeople([]); }, [currentItemIndex]);
+            useEffect(() => { setQuickSelectPeople([]); setSelectedGroups(new Set()); }, [currentItemIndex]);
 
             // ── Keyboard shortcuts ───────────────────────────────────────
             useEffect(() => {
@@ -283,20 +286,16 @@
                 const handleKey = (e) => {
                     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
                     const num = parseInt(e.key);
-                    if (!isNaN(num) && num >= 1) {
-                        if (num <= config.groups.length) {
-                            assignItem(config.groups[num - 1].name);
-                        } else if (num === config.groups.length + 1) {
-                            assignItem('Shared');
-                        } else if (num === config.groups.length + 2) {
-                            openCustomSplit();
-                        }
+                    if (!isNaN(num) && num >= 1 && num <= config.groups.length) {
+                        toggleGroupSelection(config.groups[num - 1]);
                     }
+                    if (e.key === 'e' || e.key === 'E') toggleEveryone();
+                    if (e.key === 'Enter' && quickSelectPeople.length > 0) assignFromSelection();
                     if (e.key === 'ArrowLeft') goBack();
                 };
                 window.addEventListener('keydown', handleKey);
                 return () => window.removeEventListener('keydown', handleKey);
-            }, [currentItemIndex, showSummary, showCustomSplit, showSettings, loading, config.groups.length, items.length]);
+            }, [currentItemIndex, showSummary, showCustomSplit, showSettings, loading, config.groups.length, items.length, quickSelectPeople.length, selectedGroups.size]);
             // ────────────────────────────────────────────────────────────
 
             const extractTextFromPdf = async (file) => {
@@ -605,6 +604,47 @@
                 setShowSummary(false);
                 setShowCustomSplit(false);
                 setReviewMode(true);
+            };
+
+            const toggleGroupSelection = (group) => {
+                const isActive = selectedGroups.has(group.name);
+                const newGroupSet = new Set(selectedGroups);
+                if (isActive) {
+                    newGroupSet.delete(group.name);
+                    setSelectedGroups(newGroupSet);
+                    setQuickSelectPeople(quickSelectPeople.filter(p => !group.members.includes(p)));
+                } else {
+                    newGroupSet.add(group.name);
+                    setSelectedGroups(newGroupSet);
+                    setQuickSelectPeople([...new Set([...quickSelectPeople, ...group.members])]);
+                }
+            };
+
+            const toggleEveryone = () => {
+                const allSelected = config.people.every(p => quickSelectPeople.includes(p));
+                setQuickSelectPeople(allSelected ? [] : [...config.people]);
+            };
+
+            const assignFromSelection = () => {
+                if (quickSelectPeople.length === 0) return;
+                // Matches everyone → save as Shared
+                if (quickSelectPeople.length === config.people.length &&
+                    config.people.every(p => quickSelectPeople.includes(p))) {
+                    assignItem('Shared');
+                    return;
+                }
+                // Matches a group exactly → save as group name
+                const matchedGroup = config.groups.find(g =>
+                    g.members.length > 0 &&
+                    g.members.length === quickSelectPeople.length &&
+                    g.members.every(m => quickSelectPeople.includes(m))
+                );
+                if (matchedGroup) {
+                    assignItem(matchedGroup.name);
+                    return;
+                }
+                // Otherwise → individuals
+                assignItem({ type: 'individuals', people: [...quickSelectPeople] });
             };
 
             const calculateSummary = () => {
@@ -1265,9 +1305,6 @@
                     }
                 };
 
-                const btnClasses = ['button-primary','button-secondary','button-tertiary','button-custom'];
-                const sharedNum = config.groups.length + 1;
-                const customNum = config.groups.length + 2;
                 const runningTotals = calculateSummary();
                 const runningTotal = Object.values(runningTotals).reduce((s, v) => s + v, 0);
 
@@ -1300,32 +1337,61 @@
 
                         {renderAssignmentIndicator()}
 
-                        <div className="button-group">
-                            {config.groups.map((group, idx) => (
+                        {/* ── Unified people picker ── */}
+                        <div style={{ marginTop: '4px', background: '#f9fafb', borderRadius: '12px', padding: '16px' }}>
+
+                            {/* Group presets + Everyone */}
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                {config.groups.map((group, idx) => {
+                                    const isGroupActive = selectedGroups.has(group.name);
+                                    return (
+                                        <button
+                                            key={group.name}
+                                            onClick={() => toggleGroupSelection(group)}
+                                            style={{
+                                                padding: '8px 16px',
+                                                background: isGroupActive ? '#eef2ff' : 'white',
+                                                border: `2px solid ${isGroupActive ? '#667eea' : '#e5e7eb'}`,
+                                                borderRadius: '10px',
+                                                fontSize: '13px',
+                                                fontWeight: 700,
+                                                color: isGroupActive ? '#4338ca' : '#6b7280',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s'
+                                            }}
+                                        >
+                                            {isGroupActive ? '✓ ' : ''}{group.name}
+                                            <span style={{ fontWeight: 400, opacity: 0.65, fontSize: '11px', marginLeft: '5px' }}>
+                                                ({group.members.join(', ')})
+                                            </span>
+                                            <span style={{ display: 'inline-block', fontSize: '9px', opacity: 0.4, marginLeft: '6px', fontFamily: 'monospace', background: 'rgba(0,0,0,0.07)', padding: '1px 4px', borderRadius: '3px', verticalAlign: 'middle' }}>{idx + 1}</span>
+                                        </button>
+                                    );
+                                })}
                                 <button
-                                    key={group.name}
-                                    className={`button ${btnClasses[idx % btnClasses.length]}`}
-                                    onClick={() => assignItem(group.name)}
+                                    onClick={toggleEveryone}
+                                    style={{
+                                        padding: '8px 16px',
+                                        background: config.people.length > 0 && config.people.every(p => quickSelectPeople.includes(p)) ? '#eef2ff' : 'white',
+                                        border: `2px solid ${config.people.length > 0 && config.people.every(p => quickSelectPeople.includes(p)) ? '#667eea' : '#e5e7eb'}`,
+                                        borderRadius: '10px',
+                                        fontSize: '13px',
+                                        fontWeight: 700,
+                                        color: config.people.length > 0 && config.people.every(p => quickSelectPeople.includes(p)) ? '#4338ca' : '#6b7280',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s'
+                                    }}
                                 >
-                                    {group.name} ({idx + 1})
+                                    {config.people.length > 0 && config.people.every(p => quickSelectPeople.includes(p)) ? '✓ ' : ''}Everyone
+                                    <span style={{ display: 'inline-block', fontSize: '9px', opacity: 0.4, marginLeft: '6px', fontFamily: 'monospace', background: 'rgba(0,0,0,0.07)', padding: '1px 4px', borderRadius: '3px', verticalAlign: 'middle' }}>E</span>
                                 </button>
-                            ))}
-                        </div>
-
-                        <div className="button-group" style={{ marginTop: '12px' }}>
-                            <button className="button button-tertiary" onClick={() => assignItem('Shared')}>
-                                Shared ({sharedNum})
-                            </button>
-                            <button className="button button-custom" onClick={openCustomSplit}>
-                                Individual Split ({customNum})
-                            </button>
-                        </div>
-
-                        <div style={{ marginTop: '16px' }}>
-                            <div style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
-                                Assign to individual(s):
                             </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+
+                            {/* Divider */}
+                            <div style={{ borderTop: '1px solid #e5e7eb', marginBottom: '12px' }} />
+
+                            {/* Individual person pills */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
                                 {config.people.map(person => {
                                     const sel = quickSelectPeople.includes(person);
                                     return (
@@ -1336,10 +1402,10 @@
                                                     : [...quickSelectPeople, person]
                                             )}
                                             style={{
-                                                padding: '8px 16px',
+                                                padding: '9px 18px',
                                                 background: sel ? '#eef2ff' : 'white',
-                                                border: `1.5px solid ${sel ? '#667eea' : '#d1d5db'}`,
-                                                borderRadius: '20px',
+                                                border: `2px solid ${sel ? '#667eea' : '#e5e7eb'}`,
+                                                borderRadius: '24px',
                                                 fontSize: '14px',
                                                 fontWeight: 600,
                                                 color: sel ? '#4338ca' : '#374151',
@@ -1347,24 +1413,43 @@
                                                 transition: 'all 0.15s'
                                             }}
                                         >
-                                            {person}
+                                            {sel ? '✓ ' : ''}{person}
                                         </button>
                                     );
                                 })}
-                                {quickSelectPeople.length > 0 && (
-                                    <button
-                                        onClick={() => assignItem({ type: 'individuals', people: [...quickSelectPeople] })}
-                                        style={{ padding: '8px 18px', background: '#10b981', border: 'none', borderRadius: '20px', fontSize: '14px', fontWeight: 700, color: 'white', cursor: 'pointer' }}
-                                    >
-                                        ✓ Save
-                                    </button>
-                                )}
                             </div>
-                            {quickSelectPeople.length > 0 && (
-                                <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
-                                    £{(currentItem.price / quickSelectPeople.length).toFixed(2)} each → {quickSelectPeople.join(', ')}
+
+                            {/* Price preview + Assign button */}
+                            {quickSelectPeople.length > 0 ? (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: '10px', padding: '10px 14px' }}>
+                                    <span style={{ fontSize: '13px', color: '#166534' }}>
+                                        <strong>£{(currentItem.price / quickSelectPeople.length).toFixed(2)}</strong>
+                                        {quickSelectPeople.length > 1
+                                            ? ` each · ${quickSelectPeople.join(', ')}`
+                                            : ` · ${quickSelectPeople[0]}`}
+                                    </span>
+                                    <button
+                                        onClick={assignFromSelection}
+                                        style={{ padding: '8px 22px', background: '#10b981', border: 'none', borderRadius: '20px', fontSize: '14px', fontWeight: 700, color: 'white', cursor: 'pointer', flexShrink: 0, marginLeft: '12px' }}
+                                    >
+                                        ✓ Assign <span style={{ fontSize: '10px', opacity: 0.5, fontFamily: 'monospace', background: 'rgba(255,255,255,0.25)', padding: '1px 4px', borderRadius: '3px' }}>↵</span>
+                                    </button>
+                                </div>
+                            ) : (
+                                <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '13px', padding: '8px' }}>
+                                    Select people above, or use Advanced split below
                                 </div>
                             )}
+
+                            {/* Advanced split */}
+                            <div style={{ textAlign: 'right', marginTop: '10px' }}>
+                                <button
+                                    onClick={openCustomSplit}
+                                    style={{ background: 'none', border: 'none', color: '#8b5cf6', fontSize: '12px', fontWeight: 600, cursor: 'pointer', opacity: 0.85 }}
+                                >
+                                    ⚙ Advanced split (%, qty) →
+                                </button>
+                            </div>
                         </div>
 
                         {(currentItemIndex > 0 || reviewMode) && (
