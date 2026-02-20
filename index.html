@@ -231,6 +231,9 @@
             // Which group preset buttons were explicitly clicked (for highlight only)
             const [selectedGroups, setSelectedGroups] = useState(new Set());
 
+            // Keyboard-focused pill index (-1 = none focused)
+            const [focusedPillIndex, setFocusedPillIndex] = useState(-1);
+
             // Review/edit mode (jumping back from summary)
             const [reviewMode, setReviewMode] = useState(false);
             const [expandedPerson, setExpandedPerson] = useState(null);
@@ -333,6 +336,7 @@
                     setQuickSelectPeople([...existingAssignment.people]);
                     setSelectedGroups(new Set());
                 }
+                setFocusedPillIndex(-1);
             }, [currentItemIndex]);
 
             // Persist session to localStorage whenever key state changes
@@ -358,17 +362,37 @@
                 if (!items.length || showSummary || showCustomSplit || showSettings || loading) return;
                 const handleKey = (e) => {
                     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+                    // Number keys → toggle group presets
                     const num = parseInt(e.key);
                     if (!isNaN(num) && num >= 1 && num <= config.groups.length) {
                         toggleGroupSelection(config.groups[num - 1]);
                     }
+                    // E → toggle everyone
                     if (e.key === 'e' || e.key === 'E') toggleEveryone();
+                    // Enter → assign
                     if (e.key === 'Enter' && quickSelectPeople.length > 0) assignFromSelection();
-                    if (e.key === 'ArrowLeft') goBack();
+                    // Arrow Right → move focus to next pill (enter pill nav from -1)
+                    if (e.key === 'ArrowRight') {
+                        e.preventDefault();
+                        setFocusedPillIndex(prev => Math.min(prev + 1, config.people.length - 1));
+                    }
+                    // Arrow Left → move focus to previous pill (exit pill nav at 0)
+                    if (e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        setFocusedPillIndex(prev => Math.max(prev - 1, -1));
+                    }
+                    // Space → toggle the focused pill
+                    if (e.key === ' ' && focusedPillIndex >= 0) {
+                        e.preventDefault();
+                        const person = config.people[focusedPillIndex];
+                        setQuickSelectPeople(prev =>
+                            prev.includes(person) ? prev.filter(p => p !== person) : [...prev, person]
+                        );
+                    }
                 };
                 window.addEventListener('keydown', handleKey);
                 return () => window.removeEventListener('keydown', handleKey);
-            }, [currentItemIndex, showSummary, showCustomSplit, showSettings, loading, config.groups.length, items.length, quickSelectPeople.length, selectedGroups.size]);
+            }, [currentItemIndex, showSummary, showCustomSplit, showSettings, loading, config.groups.length, items.length, quickSelectPeople.length, selectedGroups.size, focusedPillIndex]);
             // ────────────────────────────────────────────────────────────
 
             const extractTextFromPdf = async (file) => {
@@ -1476,15 +1500,19 @@
 
                             {/* Individual person pills */}
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-                                {config.people.map(person => {
+                                {config.people.map((person, idx) => {
                                     const sel = quickSelectPeople.includes(person);
+                                    const focused = idx === focusedPillIndex;
                                     return (
                                         <button
                                             key={person}
-                                            onClick={() => setQuickSelectPeople(
-                                                sel ? quickSelectPeople.filter(p => p !== person)
-                                                    : [...quickSelectPeople, person]
-                                            )}
+                                            onClick={() => {
+                                                setFocusedPillIndex(idx);
+                                                setQuickSelectPeople(
+                                                    sel ? quickSelectPeople.filter(p => p !== person)
+                                                        : [...quickSelectPeople, person]
+                                                );
+                                            }}
                                             className="quick-pill"
                                             style={{
                                                 padding: '9px 18px',
@@ -1495,13 +1523,25 @@
                                                 fontWeight: 600,
                                                 color: sel ? '#4338ca' : '#374151',
                                                 cursor: 'pointer',
-                                                transition: 'all 0.15s'
+                                                transition: 'all 0.15s',
+                                                boxShadow: focused ? '0 0 0 3px #f59e0b' : 'none',
+                                                outline: 'none'
                                             }}
                                         >
                                             {sel ? '✓ ' : ''}{person}
                                         </button>
                                     );
                                 })}
+                            </div>
+
+                            {/* Keyboard nav hint for pills */}
+                            <div style={{ fontSize: '10px', color: '#c4c9d4', marginBottom: '10px', display: 'flex', gap: '8px' }}>
+                                {[['← →', 'navigate'], ['space', 'toggle']].map(([key, label]) => (
+                                    <span key={key}>
+                                        <span style={{ fontFamily: 'monospace', background: 'rgba(0,0,0,0.06)', padding: '1px 4px', borderRadius: '3px' }}>{key}</span>
+                                        {' '}{label}
+                                    </span>
+                                ))}
                             </div>
 
                             {/* Price preview + Assign button */}
