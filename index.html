@@ -194,9 +194,14 @@
         };
 
         const SESSION_KEY = 'billSplitterSession';
+        const HISTORY_KEY = 'billSplitterHistory';
         const getSavedSession = () => {
             try { return JSON.parse(localStorage.getItem(SESSION_KEY)) || {}; }
             catch { return {}; }
+        };
+        const getHistory = () => {
+            try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+            catch { return []; }
         };
 
         const BillSplitter = () => {
@@ -204,6 +209,7 @@
             const [currentItemIndex, setCurrentItemIndex] = useState(() => getSavedSession().currentItemIndex || 0);
             const [assignments, setAssignments] = useState(() => getSavedSession().assignments || {});
             const [showSummary, setShowSummary] = useState(() => getSavedSession().showSummary || false);
+            const [receiptDate, setReceiptDate] = useState(() => getSavedSession().receiptDate || '');
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState('');
             const [dragOver, setDragOver] = useState(false);
@@ -237,6 +243,14 @@
             // Review/edit mode (jumping back from summary)
             const [reviewMode, setReviewMode] = useState(false);
             const [expandedPerson, setExpandedPerson] = useState(null);
+
+            // History screen + share modal
+            const [showHistory, setShowHistory] = useState(false);
+            const [showShareModal, setShowShareModal] = useState(false);
+            const [historyCopied, setHistoryCopied] = useState(false);
+            const [shareTab, setShareTab] = useState('person'); // 'person' | 'list'
+            const [deletingHistoryId, setDeletingHistoryId] = useState(null);
+            const [historyVersion, setHistoryVersion] = useState(0);
 
             // Quantity-based split
             const [quantitySplit, setQuantitySplit] = useState({
@@ -313,6 +327,7 @@
                 if (!existingAssignment || existingAssignment.type === 'custom' || existingAssignment.type === 'quantity') {
                     setQuickSelectPeople([]);
                     setSelectedGroups(new Set());
+                    setFocusedPillIndex(-1);
                     return;
                 }
 
@@ -344,17 +359,19 @@
                 if (items.length === 0) return;
                 try {
                     localStorage.setItem(SESSION_KEY, JSON.stringify({
-                        items, assignments, currentItemIndex, showSummary, savedAt: Date.now()
+                        items, assignments, currentItemIndex, showSummary, receiptDate, savedAt: Date.now()
                     }));
                 } catch {}
             }, [items, assignments, currentItemIndex, showSummary]);
 
             const clearSession = () => {
+                if (Object.keys(assignments).length > 0) saveToHistory();
                 try { localStorage.removeItem(SESSION_KEY); } catch {}
                 setItems([]);
                 setAssignments({});
                 setCurrentItemIndex(0);
                 setShowSummary(false);
+                setReceiptDate('');
             };
 
             // ── Keyboard shortcuts ───────────────────────────────────────
@@ -423,6 +440,27 @@
                 }
 
                 return allText.split('\n');
+            };
+
+            const extractReceiptDate = (lines) => {
+                const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                const monthPat = months.join('|');
+                const longRe = new RegExp('(\\d{1,2})\\s+(' + monthPat + ')\\s+(\\d{4})', 'i');
+                const shortRe = /(\d{1,2})\/(\d{1,2})\/(\d{4})/;
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+                    const m = line.match(longRe);
+                    if (m) {
+                        const d = new Date(m[1] + ' ' + m[2] + ' ' + m[3]);
+                        if (!isNaN(d)) return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                    }
+                    const s = line.match(shortRe);
+                    if (s) {
+                        const d = new Date(s[3] + '-' + s[2].padStart(2,'0') + '-' + s[1].padStart(2,'0'));
+                        if (!isNaN(d)) return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                    }
+                }
+                return '';
             };
 
             const parsePdfLines = (lines) => {
@@ -514,6 +552,7 @@
                     }
 
                     setItems(extractedItems);
+                    setReceiptDate(extractReceiptDate(lines));
                     setCurrentItemIndex(0);
                     setAssignments({});
                     setShowSummary(false);
@@ -864,6 +903,220 @@
                 return breakdown;
             };
 
+            // ── History & share ──────────────────────────────────────────
+            const saveToHistory = () => {
+                try {
+                    const totals = calculateSummary();
+                    const totalBill = Object.values(totals).reduce((s, v) => s + v, 0);
+                    const entry = {
+                        id: Date.now(),
+                        savedAt: Date.now(),
+                        items: [...items],
+                        assignments: { ...assignments },
+                        config: { people: [...config.people], groups: config.groups.map(g => ({ ...g, members: [...g.members] })) },
+                        totals,
+                        totalBill
+                    };
+                    const existing = getHistory();
+                    existing.unshift(entry);
+                    if (existing.length > 30) existing.pop();
+                    localStorage.setItem(HISTORY_KEY, JSON.stringify(existing));
+                } catch {}
+            };
+
+            const deleteHistoryEntry = (id) => {
+                try {
+                    const updated = getHistory().filter(e => e.id !== id);
+                    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+                    setDeletingHistoryId(null);
+                    setHistoryVersion(v => v + 1);
+                } catch {}
+            };
+
+            // ── Learning / suggestions ────────────────────────────────────
+            const normaliseItemName = (name) => {
+                // Strip leading quantity like "14 x " or "12x " before matching
+                return (name || '').replace(/^\d+\s*x\s+/i, '').trim().toLowerCase();
+            };
+
+            const getSuggestedAssignment = (itemName) => {
+                const needle = normaliseItemName(itemName);
+                if (!needle) return null;
+                const hist = getHistory(); // newest first
+                for (let i = 0; i < hist.length; i++) {
+                    const entry = hist[i];
+                    const matchIdx = entry.items.findIndex(it => normaliseItemName(it.name) === needle);
+                    if (matchIdx === -1) continue;
+                    const a = entry.assignments[matchIdx];
+                    if (!a) continue;
+                    // Skip complex splits - too hard to summarise as a label
+                    if (a.type === 'custom' || a.type === 'quantity') continue;
+                    return a;
+                }
+                return null;
+            };
+
+            const formatSuggestionLabel = (assignment) => {
+                if (!assignment) return null;
+                if (assignment === 'Shared') return 'Everyone';
+                if (typeof assignment === 'string') return assignment; // group name e.g. "Adults"
+                if (assignment.type === 'individuals') {
+                    const people = assignment.people || [];
+                    if (people.length === 0) return null;
+                    return people.join(' & ');
+                }
+                return null;
+            };
+
+            const generateShareText = () => {
+                const totals = calculateSummary();
+                const totalBill = Object.values(totals).reduce((s, v) => s + v, 0);
+                const date = receiptDate || new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+                // Build per-person item list with context labels
+                const perPerson = {};
+                config.people.forEach(p => { perPerson[p] = []; });
+
+                const addFor = (person, amt, context) => {
+                    if (person in perPerson) perPerson[person].push({ amt, context });
+                };
+
+                // Helper: join a list of names nicely e.g. "Rosie, Stu & Joe"
+                const joinNames = (names) => {
+                    if (names.length === 0) return '';
+                    if (names.length === 1) return names[0];
+                    return names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1];
+                };
+
+                items.forEach((item, i) => {
+                    const a = assignments[i];
+                    if (!a) return;
+                    const itemLine = item.name + '  £' + item.price.toFixed(2);
+
+                    if (a === 'Shared') {
+                        const amt = item.price / config.people.length;
+                        const ctx = itemLine + '\n  (everyone · £' + amt.toFixed(2) + ' each)';
+                        config.people.forEach(p => addFor(p, amt, ctx));
+
+                    } else if (typeof a === 'string') {
+                        const grp = config.groups.find(g => g.name === a);
+                        if (grp && grp.members.length > 0) {
+                            const amt = item.price / grp.members.length;
+                            const ctx = grp.members.length === 1
+                                ? itemLine + '\n  (just ' + grp.members[0] + ')'
+                                : itemLine + '\n  (' + a + ' · £' + amt.toFixed(2) + ' each)';
+                            grp.members.forEach(p => addFor(p, amt, ctx));
+                        }
+
+                    } else if (a.type === 'individuals') {
+                        if (a.people && a.people.length > 0) {
+                            const amt = item.price / a.people.length;
+                            for (let j = 0; j < a.people.length; j++) {
+                                const p = a.people[j];
+                                const others = a.people.filter(x => x !== p);
+                                const ctx = others.length === 0
+                                    ? itemLine + '\n  (just ' + p + ')'
+                                    : itemLine + '\n  (with ' + joinNames(others) + ' · £' + amt.toFixed(2) + ' each)';
+                                addFor(p, amt, ctx);
+                            }
+                        }
+
+                    } else if (a.type === 'custom') {
+                        const keyMap = {};
+                        config.people.forEach(p => { keyMap[p.toLowerCase()] = p; });
+                        if (config.people.length > 0) keyMap['you'] = config.people[0];
+                        const keys = Object.keys(a.splits);
+                        for (let j = 0; j < keys.length; j++) {
+                            const key = keys[j];
+                            const pct = a.splits[key];
+                            const name = keyMap[key] || keyMap[key.toLowerCase()];
+                            if (name) {
+                                const amt = (item.price * pct) / 100;
+                                addFor(name, amt, itemLine + '\n  (custom split ' + pct.toFixed(0) + '%)');
+                            }
+                        }
+
+                    } else if (a.type === 'quantity') {
+                        const ppu = item.price / a.totalQty;
+                        const g0 = config.groups[0], g1 = config.groups[1];
+                        if (g0 && g0.members.length > 0) {
+                            const amt = (ppu * a.splits.youLisa) / g0.members.length;
+                            const ctx = itemLine + '\n  (' + g0.name + ': ' + a.splits.youLisa + ' of ' + a.totalQty + ' · £' + amt.toFixed(2) + ' each)';
+                            g0.members.forEach(p => addFor(p, amt, ctx));
+                        }
+                        if (g1 && g1.members.length > 0) {
+                            const amt = (ppu * a.splits.kids) / g1.members.length;
+                            const ctx = itemLine + '\n  (' + g1.name + ': ' + a.splits.kids + ' of ' + a.totalQty + ' · £' + amt.toFixed(2) + ' each)';
+                            g1.members.forEach(p => addFor(p, amt, ctx));
+                        }
+                    }
+                });
+
+                let text = '🛒 Sainsbury\'s · ' + date + '\nTotal: £' + totalBill.toFixed(2) + ' · ' + Object.keys(assignments).length + ' items\n';
+
+                config.people.forEach(person => {
+                    const pItems = perPerson[person] || [];
+                    if (pItems.length === 0) return;
+                    const personTotal = totals[person] || 0;
+                    text += '\n── ' + person + ' · £' + personTotal.toFixed(2) + ' ──\n';
+                    pItems.forEach(function(entry) { text += entry.context + '\n'; });
+                });
+
+                return text.trim();
+            };
+            // ────────────────────────────────────────────────────────────
+
+            const generateShoppingListText = () => {
+                const totals = calculateSummary();
+                const totalBill = Object.values(totals).reduce((s, v) => s + v, 0);
+                const date = receiptDate || new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+                const joinNames = (names) => {
+                    if (names.length === 0) return '';
+                    if (names.length === 1) return names[0];
+                    return names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1];
+                };
+
+                let text = '🛒 Sainsbury\'s · ' + date + '\nTotal: £' + totalBill.toFixed(2) + ' · ' + Object.keys(assignments).length + ' items\n\n';
+
+                items.forEach((item, i) => {
+                    const a = assignments[i];
+                    if (!a) return;
+
+                    let who = '';
+                    if (a === 'Shared') {
+                        who = 'Everyone';
+                    } else if (typeof a === 'string') {
+                        const grp = config.groups.find(g => g.name === a);
+                        who = a;
+                    } else if (a.type === 'individuals') {
+                        who = joinNames(a.people || []);
+                    } else if (a.type === 'custom') {
+                        const parts = [];
+                        const keyMap = {};
+                        config.people.forEach(p => { keyMap[p.toLowerCase()] = p; });
+                        if (config.people.length > 0) keyMap['you'] = config.people[0];
+                        const keys = Object.keys(a.splits);
+                        for (let j = 0; j < keys.length; j++) {
+                            const key = keys[j];
+                            const name = keyMap[key] || keyMap[key.toLowerCase()];
+                            if (name) parts.push(name + ' ' + a.splits[key].toFixed(0) + '%');
+                        }
+                        who = parts.join(', ');
+                    } else if (a.type === 'quantity') {
+                        const g0 = config.groups[0], g1 = config.groups[1];
+                        const parts = [];
+                        if (g0 && a.splits.youLisa > 0) parts.push(g0.name + ': ' + a.splits.youLisa);
+                        if (g1 && a.splits.kids > 0) parts.push(g1.name + ': ' + a.splits.kids);
+                        who = parts.join(', ');
+                    }
+
+                    text += item.name + '  £' + item.price.toFixed(2) + '  [' + who + ']\n';
+                });
+
+                return text.trim();
+            };
+
             const getTotalPercentage = () => {
                 return Object.values(customSplit).reduce((sum, val) => sum + val, 0);
             };
@@ -1040,6 +1293,107 @@
             }
             // ────────────────────────────────────────────────────────────
 
+            // ── History Screen ──────────────────────────────────────────
+            if (showHistory) {
+                void historyVersion; // read to trigger re-render when history changes
+                const history = getHistory();
+                return (
+                    <div className="card">
+                        <button className="settings-btn" onClick={() => setShowHistory(false)} title="Close history">✕</button>
+                        <h1 className="title" style={{ marginBottom: '4px' }}>Past Bills</h1>
+                        <p className="subtitle" style={{ marginBottom: '20px' }}>{history.length} saved bill{history.length !== 1 ? 's' : ''}</p>
+
+                        {history.length === 0 ? (
+                            <div style={{ textAlign: 'center', color: '#9ca3af', padding: '40px 0', fontSize: '15px' }}>
+                                No bills saved yet.<br/>
+                                <span style={{ fontSize: '13px' }}>Bills are saved automatically when you start a new one.</span>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {history.map(entry => {
+                                    const isExpanded = expandedPerson === entry.id;
+                                    const isConfirming = deletingHistoryId === entry.id;
+                                    const d = new Date(entry.savedAt);
+                                    const dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+                                    return (
+                                        <div key={entry.id} style={{ border: `1px solid ${isConfirming ? '#fca5a5' : '#e5e7eb'}`, borderRadius: '12px', overflow: 'hidden', transition: 'border-color 0.2s' }}>
+                                            {/* Header row */}
+                                            {isConfirming ? (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', background: '#fef2f2' }}>
+                                                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#991b1b' }}>Delete this bill?</span>
+                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                        <button onClick={() => setDeletingHistoryId(null)}
+                                                            style={{ padding: '6px 14px', background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '13px', fontWeight: 600, color: '#374151', cursor: 'pointer' }}>
+                                                            Cancel
+                                                        </button>
+                                                        <button onClick={() => deleteHistoryEntry(entry.id)}
+                                                            style={{ padding: '6px 14px', background: '#ef4444', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, color: 'white', cursor: 'pointer' }}>
+                                                            Delete
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', background: isExpanded ? '#fffbeb' : 'white' }}>
+                                                <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setExpandedPerson(isExpanded ? null : entry.id)}>
+                                                    <div style={{ fontWeight: 700, color: '#1f2937', fontSize: '14px' }}>{dateStr}</div>
+                                                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
+                                                        {entry.items.length} items · {Object.keys(entry.assignments).length} assigned
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                    <span style={{ fontWeight: 700, color: '#92400e', fontSize: '18px', cursor: 'pointer' }} onClick={() => setExpandedPerson(isExpanded ? null : entry.id)}>£{entry.totalBill.toFixed(2)}</span>
+                                                    <button onClick={e => { e.stopPropagation(); setDeletingHistoryId(entry.id); }}
+                                                        style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: '#d1d5db', padding: '4px', lineHeight: 1 }}
+                                                        title="Delete this bill">🗑️</button>
+                                                    <span style={{ color: '#9ca3af', fontSize: '12px', cursor: 'pointer' }} onClick={() => setExpandedPerson(isExpanded ? null : entry.id)}>{isExpanded ? '▲' : '▼'}</span>
+                                                </div>
+                                            </div>
+                                            )}
+                                            {/* Per-person totals (always visible) */}
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0', borderTop: '1px solid #f3f4f6', background: '#fafafa' }}>
+                                                {entry.config.people.map((person, idx) => (
+                                                    <div key={person} style={{ flex: '1 0 calc(33% - 1px)', padding: '8px 14px', borderRight: (idx + 1) % 3 !== 0 ? '1px solid #f3f4f6' : 'none', borderBottom: idx < entry.config.people.length - 3 ? '1px solid #f3f4f6' : 'none' }}>
+                                                        <div style={{ fontSize: '11px', color: '#6b7280' }}>{person}</div>
+                                                        <div style={{ fontWeight: 700, color: '#1f2937', fontSize: '13px' }}>£{(entry.totals[person] || 0).toFixed(2)}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            {/* Expanded: item list */}
+                                            {isExpanded && (
+                                                <div style={{ borderTop: '1px solid #e5e7eb', maxHeight: '300px', overflowY: 'auto' }}>
+                                                    {entry.items.map((item, i) => {
+                                                        const a = entry.assignments[i];
+                                                        let who = '—';
+                                                        if (!a) who = 'Unassigned';
+                                                        else if (a === 'Shared') who = 'Everyone';
+                                                        else if (typeof a === 'string') who = a;
+                                                        else if (a.type === 'individuals') who = a.people.join(', ');
+                                                        else if (a.type === 'custom') who = 'Custom %';
+                                                        else if (a.type === 'quantity') who = 'Qty split';
+                                                        return (
+                                                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 16px', borderBottom: i < entry.items.length - 1 ? '1px solid #f9fafb' : 'none', fontSize: '13px' }}>
+                                                                <span style={{ color: '#1f2937', flex: 1, paddingRight: '8px' }}>{item.name}</span>
+                                                                <span style={{ color: '#9ca3af', fontSize: '11px', marginRight: '10px', whiteSpace: 'nowrap' }}>{who}</span>
+                                                                <span style={{ fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>£{item.price.toFixed(2)}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        <button className="button button-back" onClick={() => setShowHistory(false)} style={{ width: '100%', marginTop: '20px' }}>
+                            ← Back
+                        </button>
+                    </div>
+                );
+            }
+            // ────────────────────────────────────────────────────────────
+
             if (loading) {
                 return (
                     <div className="card">
@@ -1160,9 +1514,61 @@
                             </div>
                         </div>
 
-                        <button className="button button-back" onClick={clearSession} style={{ width: '100%' }}>
-                            New Bill
-                        </button>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button
+                                onClick={() => { setShowShareModal(true); setHistoryCopied(false); setShareTab('person'); }}
+                                style={{ flex: 1, padding: '12px', background: '#eef2ff', border: '2px solid #c7d2fe', borderRadius: '10px', fontSize: '14px', fontWeight: 700, color: '#4338ca', cursor: 'pointer' }}
+                            >
+                                📤 Share summary
+                            </button>
+                            <button className="button button-back" onClick={clearSession} style={{ flex: 1, margin: 0 }}>
+                                New Bill
+                            </button>
+                        </div>
+
+                        {/* ── Share modal overlay ── */}
+                        {showShareModal && (
+                            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '20px' }}
+                                onClick={() => setShowShareModal(false)}>
+                                <div style={{ background: 'white', borderRadius: '16px', padding: '20px', width: '100%', maxWidth: '560px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
+                                    onClick={e => e.stopPropagation()}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                        <span style={{ fontWeight: 700, fontSize: '15px', color: '#1f2937' }}>Share summary</span>
+                                        <button onClick={() => setShowShareModal(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#6b7280' }}>✕</button>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                                        {[['person', 'By person'], ['list', 'Shopping list']].map(function(t) {
+                                            return (
+                                                <button key={t[0]} onClick={() => { setShareTab(t[0]); setHistoryCopied(false); }}
+                                                    style={{ flex: 1, padding: '8px', border: '2px solid ' + (shareTab === t[0] ? '#667eea' : '#e5e7eb'), borderRadius: '8px', background: shareTab === t[0] ? '#eef2ff' : 'white', color: shareTab === t[0] ? '#4338ca' : '#6b7280', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}>
+                                                    {t[1]}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <textarea
+                                        readOnly
+                                        value={shareTab === 'person' ? generateShareText() : generateShoppingListText()}
+                                        onClick={e => e.target.select()}
+                                        style={{ flex: 1, minHeight: '260px', fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.6, padding: '12px', border: '1px solid #e5e7eb', borderRadius: '8px', resize: 'none', color: '#374151', background: '#f9fafb', overflowY: 'auto' }}
+                                    />
+                                    <button
+                                        onClick={() => {
+                                            const text = shareTab === 'person' ? generateShareText() : generateShoppingListText();
+                                            if (navigator.clipboard) {
+                                                navigator.clipboard.writeText(text).then(() => setHistoryCopied(true));
+                                            } else {
+                                                const el = document.querySelector('textarea');
+                                                if (el) { el.select(); document.execCommand('copy'); setHistoryCopied(true); }
+                                            }
+                                        }}
+                                        style={{ marginTop: '12px', padding: '12px', background: historyCopied ? '#10b981' : '#667eea', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, color: 'white', cursor: 'pointer', transition: 'background 0.2s' }}
+                                    >
+                                        {historyCopied ? '✓ Copied!' : 'Copy to clipboard'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 );
             }
@@ -1437,6 +1843,24 @@
                             </div>
                         </div>
 
+                        {/* ── Learning suggestion hint ── */}
+                        {(() => {
+                            const suggestion = getSuggestedAssignment(currentItem.name);
+                            const label = formatSuggestionLabel(suggestion);
+                            if (!label) return null;
+                            return (
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    marginBottom: '8px', padding: '6px 12px',
+                                    background: '#f3f4f6', borderRadius: '8px',
+                                    fontSize: '13px', color: '#9ca3af'
+                                }}>
+                                    <span style={{ fontSize: '11px' }}>🔮</span>
+                                    <span>Probably: <strong style={{ color: '#6b7280' }}>{label}</strong></span>
+                                </div>
+                            );
+                        })()}
+
                         {reviewMode && (
                             <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#92400e', fontWeight: 600 }}>
                                 ✏️ Editing — will return to summary when saved
@@ -1650,6 +2074,18 @@
                         onChange={handleFileSelect}
                         style={{ display: 'none' }}
                     />
+
+                    {/* History link */}
+                    {getHistory().length > 0 && (
+                        <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                            <button
+                                onClick={() => setShowHistory(true)}
+                                style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '13px', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#d1d5db' }}
+                            >
+                                📋 View past bills ({getHistory().length})
+                            </button>
+                        </div>
+                    )}
                 </div>
             );
         };
