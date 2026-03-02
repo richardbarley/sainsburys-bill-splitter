@@ -210,6 +210,11 @@
             const [assignments, setAssignments] = useState(() => getSavedSession().assignments || {});
             const [showSummary, setShowSummary] = useState(() => getSavedSession().showSummary || false);
             const [receiptDate, setReceiptDate] = useState(() => getSavedSession().receiptDate || '');
+            const [sharedBillBanner, setSharedBillBanner] = useState(''); // '' | 'review' | 'completed:Name'
+            const [collabMode, setCollabMode] = useState(false);
+            const [collabSharedBy, setCollabSharedBy] = useState('');
+            const [collabReturnerName, setCollabReturnerName] = useState('');
+            const [sendBackCopied, setSendBackCopied] = useState(false);
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState('');
             const [dragOver, setDragOver] = useState(false);
@@ -364,6 +369,49 @@
                 } catch {}
             }, [items, assignments, currentItemIndex, showSummary]);
 
+            // On mount: check URL hash for a shared bill link or collab request
+            useEffect(() => {
+                const hash = window.location.hash;
+                if (hash.startsWith('#share=')) {
+                    try {
+                        const encoded = hash.slice(7);
+                        const json = decodeURIComponent(escape(atob(encoded)));
+                        const data = JSON.parse(json);
+                        if (data.items && data.items.length > 0) {
+                            setItems(data.items);
+                            setAssignments(data.assignments || {});
+                            setReceiptDate(data.receiptDate || '');
+                            setCurrentItemIndex(0);
+                            setShowSummary(true);
+                            setSharedBillBanner(data.completedBy ? 'completed:' + data.completedBy : 'review');
+                            window.history.replaceState(null, '', window.location.pathname);
+                        }
+                    } catch (e) { /* ignore malformed links */ }
+                } else if (hash.startsWith('#collab=')) {
+                    try {
+                        const encoded = hash.slice(8);
+                        const json = decodeURIComponent(escape(atob(encoded)));
+                        const data = JSON.parse(json);
+                        if (data.items && data.items.length > 0) {
+                            setItems(data.items);
+                            const asgns = data.assignments || {};
+                            setAssignments(asgns);
+                            setReceiptDate(data.receiptDate || '');
+                            // Jump to first unassigned item
+                            let firstUnassigned = 0;
+                            for (let i = 0; i < data.items.length; i++) {
+                                if (!asgns[i]) { firstUnassigned = i; break; }
+                            }
+                            setCurrentItemIndex(firstUnassigned);
+                            setShowSummary(false);
+                            setCollabMode(true);
+                            setCollabSharedBy(data.sharedBy || '');
+                            window.history.replaceState(null, '', window.location.pathname);
+                        }
+                    } catch (e) { /* ignore malformed links */ }
+                }
+            }, []);
+
             const clearSession = () => {
                 if (Object.keys(assignments).length > 0) saveToHistory();
                 try { localStorage.removeItem(SESSION_KEY); } catch {}
@@ -372,6 +420,11 @@
                 setCurrentItemIndex(0);
                 setShowSummary(false);
                 setReceiptDate('');
+                setSharedBillBanner('');
+                setCollabMode(false);
+                setCollabSharedBy('');
+                setCollabReturnerName('');
+                setSendBackCopied(false);
             };
 
             // ── Keyboard shortcuts ───────────────────────────────────────
@@ -1413,6 +1466,20 @@
                     <div className="card">
                         <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
 
+                        {/* ── Shared bill / completed banner ── */}
+                        {sharedBillBanner && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: sharedBillBanner.startsWith('completed:') ? '#f0fdf4' : '#fffbeb', border: '2px solid ' + (sharedBillBanner.startsWith('completed:') ? '#86efac' : '#fcd34d'), borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: sharedBillBanner.startsWith('completed:') ? '#14532d' : '#92400e' }}>
+                                <span style={{ fontSize: '18px' }}>{sharedBillBanner.startsWith('completed:') ? '✅' : '👀'}</span>
+                                <div style={{ flex: 1 }}>
+                                    {sharedBillBanner.startsWith('completed:')
+                                        ? <><strong>Completed by {sharedBillBanner.slice(10)}</strong> — review the assignments below and adjust anything that needs changing.</>
+                                        : <><strong>Reviewing shared bill</strong> — assignments have been pre-filled. Tap any item to change its split.</>
+                                    }
+                                </div>
+                                <button onClick={() => setSharedBillBanner('')} style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: sharedBillBanner.startsWith('completed:') ? '#166534' : '#b45309', flexShrink: 0 }}>✕</button>
+                            </div>
+                        )}
+
                         {/* ── Header row ── */}
                         <div className="summary-header">
                             <div>
@@ -1526,6 +1593,61 @@
                             </button>
                         </div>
 
+                        {/* ── Send Back section (collab mode only) ── */}
+                        {collabMode && (
+                            <div style={{ marginTop: '12px', background: '#eff6ff', border: '2px solid #93c5fd', borderRadius: '12px', padding: '14px 16px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 700, color: '#1e40af', marginBottom: '10px' }}>
+                                    📨 Send back to {collabSharedBy || 'the sender'}
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Your name (so they know who did this)"
+                                    value={collabReturnerName}
+                                    onChange={e => { setCollabReturnerName(e.target.value); setSendBackCopied(false); }}
+                                    style={{ width: '100%', border: '2px solid #bfdbfe', borderRadius: '8px', padding: '9px 12px', fontSize: '14px', outline: 'none', color: '#1e40af', marginBottom: '8px', boxSizing: 'border-box' }}
+                                />
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <button
+                                        onClick={() => {
+                                            try {
+                                                const returner = collabReturnerName.trim() || 'Someone';
+                                                const payload = JSON.stringify({ items: items, assignments: assignments, receiptDate: receiptDate, completedBy: returner });
+                                                const encoded = btoa(unescape(encodeURIComponent(payload)));
+                                                const url = window.location.origin + window.location.pathname + '#share=' + encoded;
+                                                const recipient = collabSharedBy || 'there';
+                                                const msg = 'Hi ' + recipient + '! I\'ve assigned the remaining items on the bill. Tap the link to review ✅';
+                                                if (navigator.share) {
+                                                    navigator.share({ text: msg, url: url });
+                                                } else if (navigator.clipboard) {
+                                                    navigator.clipboard.writeText(url).then(() => setSendBackCopied(true));
+                                                    setTimeout(() => setSendBackCopied(false), 2000);
+                                                }
+                                            } catch(e) {}
+                                        }}
+                                        style={{ padding: '12px', background: '#10b981', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, color: 'white', cursor: 'pointer' }}
+                                    >
+                                        📤 Share…
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            try {
+                                                const returner = collabReturnerName.trim() || 'Someone';
+                                                const payload = JSON.stringify({ items: items, assignments: assignments, receiptDate: receiptDate, completedBy: returner });
+                                                const encoded = btoa(unescape(encodeURIComponent(payload)));
+                                                const url = window.location.origin + window.location.pathname + '#share=' + encoded;
+                                                if (navigator.clipboard) {
+                                                    navigator.clipboard.writeText(url).then(() => { setSendBackCopied(true); setTimeout(() => setSendBackCopied(false), 2000); });
+                                                }
+                                            } catch(e) {}
+                                        }}
+                                        style={{ padding: '10px', background: 'white', border: '2px solid #bfdbfe', borderRadius: '10px', fontSize: '13px', fontWeight: 600, color: sendBackCopied ? '#10b981' : '#3b82f6', cursor: 'pointer', transition: 'color 0.2s' }}
+                                    >
+                                        {sendBackCopied ? '✓ Link copied!' : 'Copy link instead'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {/* ── Share modal overlay ── */}
                         {showShareModal && (
                             <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '20px' }}
@@ -1536,36 +1658,126 @@
                                         <span style={{ fontWeight: 700, fontSize: '15px', color: '#1f2937' }}>Share summary</span>
                                         <button onClick={() => setShowShareModal(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#6b7280' }}>✕</button>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-                                        {[['person', 'By person'], ['list', 'Shopping list']].map(function(t) {
+                                    <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                                        {[['person', 'By person'], ['list', 'Shopping list'], ['review', '🔗 Review link'], ['request', '📤 Request input']].map(function(t) {
                                             return (
                                                 <button key={t[0]} onClick={() => { setShareTab(t[0]); setHistoryCopied(false); }}
-                                                    style={{ flex: 1, padding: '8px', border: '2px solid ' + (shareTab === t[0] ? '#667eea' : '#e5e7eb'), borderRadius: '8px', background: shareTab === t[0] ? '#eef2ff' : 'white', color: shareTab === t[0] ? '#4338ca' : '#6b7280', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}>
+                                                    style={{ flex: 1, minWidth: '90px', padding: '8px 6px', border: '2px solid ' + (shareTab === t[0] ? '#667eea' : '#e5e7eb'), borderRadius: '8px', background: shareTab === t[0] ? '#eef2ff' : 'white', color: shareTab === t[0] ? '#4338ca' : '#6b7280', fontWeight: 600, fontSize: '12px', cursor: 'pointer' }}>
                                                     {t[1]}
                                                 </button>
                                             );
                                         })}
                                     </div>
-                                    <textarea
-                                        readOnly
-                                        value={shareTab === 'person' ? generateShareText() : generateShoppingListText()}
-                                        onClick={e => e.target.select()}
-                                        style={{ flex: 1, minHeight: '260px', fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.6, padding: '12px', border: '1px solid #e5e7eb', borderRadius: '8px', resize: 'none', color: '#374151', background: '#f9fafb', overflowY: 'auto' }}
-                                    />
-                                    <button
-                                        onClick={() => {
-                                            const text = shareTab === 'person' ? generateShareText() : generateShoppingListText();
-                                            if (navigator.clipboard) {
-                                                navigator.clipboard.writeText(text).then(() => setHistoryCopied(true));
-                                            } else {
-                                                const el = document.querySelector('textarea');
-                                                if (el) { el.select(); document.execCommand('copy'); setHistoryCopied(true); }
-                                            }
-                                        }}
-                                        style={{ marginTop: '12px', padding: '12px', background: historyCopied ? '#10b981' : '#667eea', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, color: 'white', cursor: 'pointer', transition: 'background 0.2s' }}
-                                    >
-                                        {historyCopied ? '✓ Copied!' : 'Copy to clipboard'}
-                                    </button>
+                                    {(shareTab === 'review' || shareTab === 'request') ? (() => {
+                                        const isRequest = shareTab === 'request';
+                                        let linkUrl = '';
+                                        try {
+                                            const assignedCount = Object.keys(assignments).length;
+                                            const unassignedCount = items.length - assignedCount;
+                                            const payload = isRequest
+                                                ? JSON.stringify({ items: items, assignments: assignments, receiptDate: receiptDate, sharedBy: config.people[0]?.name || '' })
+                                                : JSON.stringify({ items: items, assignments: assignments, receiptDate: receiptDate });
+                                            const encoded = btoa(unescape(encodeURIComponent(payload)));
+                                            linkUrl = window.location.origin + window.location.pathname + (isRequest ? '#collab=' : '#share=') + encoded;
+                                        } catch(e) { linkUrl = 'Error generating link'; }
+                                        const assignedCount = Object.keys(assignments).length;
+                                        const unassignedCount = items.length - assignedCount;
+                                        return (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
+                                                <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.5 }}>
+                                                    {isRequest
+                                                        ? 'Send this to a family member. They\'ll be taken to the first unassigned item and can work through the remaining ' + unassignedCount + ' item' + (unassignedCount !== 1 ? 's' : '') + ', then send it back to you.'
+                                                        : 'Share this link so someone can load the completed bill and edit any assignments before you check the final split.'}
+                                                </p>
+                                                <textarea
+                                                    readOnly
+                                                    value={linkUrl}
+                                                    onClick={e => e.target.select()}
+                                                    style={{ flex: 1, minHeight: '80px', fontFamily: 'monospace', fontSize: '11px', lineHeight: 1.5, padding: '12px', border: '1px solid #e5e7eb', borderRadius: '8px', resize: 'none', color: '#374151', background: '#f9fafb', wordBreak: 'break-all' }}
+                                                />
+                                                <p style={{ fontSize: '12px', color: '#9ca3af' }}>
+                                                    {isRequest
+                                                        ? assignedCount + ' of ' + items.length + ' items already assigned — the recipient will start from the first unassigned item.'
+                                                        : 'When opened, the bill loads straight into the summary — tap any item to edit its assignment.'}
+                                                </p>
+                                            </div>
+                                        );
+                                    })() : (
+                                        <textarea
+                                            readOnly
+                                            value={shareTab === 'person' ? generateShareText() : generateShoppingListText()}
+                                            onClick={e => e.target.select()}
+                                            style={{ flex: 1, minHeight: '260px', fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.6, padding: '12px', border: '1px solid #e5e7eb', borderRadius: '8px', resize: 'none', color: '#374151', background: '#f9fafb', overflowY: 'auto' }}
+                                        />
+                                    )}
+                                    {shareTab === 'request' ? (() => {
+                                        const buildCollabUrl = () => {
+                                            const payload = JSON.stringify({ items: items, assignments: assignments, receiptDate: receiptDate, sharedBy: config.people[0]?.name || '' });
+                                            const encoded = btoa(unescape(encodeURIComponent(payload)));
+                                            return window.location.origin + window.location.pathname + '#collab=' + encoded;
+                                        };
+                                        const unassignedCount = items.length - Object.keys(assignments).length;
+                                        const senderName = config.people[0]?.name || '';
+                                        return (
+                                            <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                <button
+                                                    onClick={() => {
+                                                        try {
+                                                            const url = buildCollabUrl();
+                                                            const itemWord = unassignedCount === 1 ? '1 item' : unassignedCount + ' items';
+                                                            const intro = senderName ? 'Hi! ' + senderName + ' has shared the Sainsbury\'s bill' : 'Hi! Here\'s the Sainsbury\'s bill';
+                                                            const msg = intro + ' — there ' + (unassignedCount === 1 ? 'is ' : 'are ') + itemWord + ' left to assign. Tap the link to fill them in, then send it back when you\'re done 🧾';
+                                                            if (navigator.share) {
+                                                                navigator.share({ text: msg, url: url });
+                                                            } else if (navigator.clipboard) {
+                                                                navigator.clipboard.writeText(url).then(() => setHistoryCopied(true));
+                                                            }
+                                                        } catch(e) {}
+                                                    }}
+                                                    style={{ padding: '13px', background: '#10b981', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 700, color: 'white', cursor: 'pointer' }}
+                                                >
+                                                    📤 Share…
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        try {
+                                                            const url = buildCollabUrl();
+                                                            if (navigator.clipboard) {
+                                                                navigator.clipboard.writeText(url).then(() => setHistoryCopied(true));
+                                                            }
+                                                        } catch(e) {}
+                                                    }}
+                                                    style={{ padding: '10px', background: 'white', border: '2px solid #e5e7eb', borderRadius: '10px', fontSize: '13px', fontWeight: 600, color: historyCopied ? '#10b981' : '#6b7280', cursor: 'pointer', transition: 'color 0.2s' }}
+                                                >
+                                                    {historyCopied ? '✓ Link copied!' : 'Copy link instead'}
+                                                </button>
+                                            </div>
+                                        );
+                                    })() : (
+                                        <button
+                                            onClick={() => {
+                                                let text = '';
+                                                if (shareTab === 'review') {
+                                                    try {
+                                                        const payload = JSON.stringify({ items: items, assignments: assignments, receiptDate: receiptDate });
+                                                        const encoded = btoa(unescape(encodeURIComponent(payload)));
+                                                        text = window.location.origin + window.location.pathname + '#share=' + encoded;
+                                                    } catch(e) {}
+                                                } else {
+                                                    text = shareTab === 'person' ? generateShareText() : generateShoppingListText();
+                                                }
+                                                if (navigator.clipboard) {
+                                                    navigator.clipboard.writeText(text).then(() => setHistoryCopied(true));
+                                                } else {
+                                                    const el = document.querySelector('textarea');
+                                                    if (el) { el.select(); document.execCommand('copy'); setHistoryCopied(true); }
+                                                }
+                                            }}
+                                            style={{ marginTop: '12px', padding: '12px', background: historyCopied ? '#10b981' : '#667eea', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, color: 'white', cursor: 'pointer', transition: 'background 0.2s' }}
+                                        >
+                                            {historyCopied ? '✓ Copied!' : shareTab === 'review' ? 'Copy link' : 'Copy to clipboard'}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -1835,6 +2047,19 @@
                             <div className="progress-fill" style={{ width: `${progress}%` }}></div>
                         </div>
 
+                        {/* ── Collab mode banner ── */}
+                        {collabMode && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#eff6ff', border: '2px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#1e40af' }}>
+                                <span style={{ fontSize: '18px' }}>📋</span>
+                                <div>
+                                    {collabSharedBy
+                                        ? <><strong>{collabSharedBy}</strong> has shared this bill with you — please assign the remaining items, then use "Send back" on the summary screen.</>
+                                        : <>Someone has shared this bill with you — please assign the remaining items, then use "Send back" on the summary screen.</>
+                                    }
+                                </div>
+                            </div>
+                        )}
+
                         <div className="item-card">
                             <div className="item-name">{currentItem.name}</div>
                             <div className="item-details">
@@ -2001,15 +2226,39 @@
                             </div>
                         </div>
 
-                        {(currentItemIndex > 0 || reviewMode) && (
-                            <button
-                                className="button button-back"
-                                onClick={goBack}
-                                style={{ marginTop: '16px', width: '100%' }}
-                            >
-                                {reviewMode ? '← Back to Summary' : '← Back'}
-                            </button>
-                        )}
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                            {(currentItemIndex > 0 || reviewMode) && (
+                                <button
+                                    className="button button-back"
+                                    onClick={goBack}
+                                    style={{ flex: 1, margin: 0 }}
+                                >
+                                    {reviewMode ? '← Back to Summary' : '← Back'}
+                                </button>
+                            )}
+                            {!reviewMode && (
+                                <button
+                                    onClick={() => {
+                                        if (currentItemIndex < items.length - 1) {
+                                            setCurrentItemIndex(currentItemIndex + 1);
+                                        } else {
+                                            setShowSummary(true);
+                                        }
+                                    }}
+                                    style={{
+                                        flex: 1, padding: '16px 24px', border: 'none',
+                                        borderRadius: '8px', fontSize: '15px', fontWeight: 600, cursor: 'pointer',
+                                        background: currentAssignment ? '#d1fae5' : '#f3f4f6',
+                                        color: currentAssignment ? '#065f46' : '#6b7280',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    {currentItemIndex < items.length - 1
+                                        ? (currentAssignment ? 'Looks good ✓' : 'Skip →')
+                                        : (currentAssignment ? 'Done ✓' : 'Skip to summary →')}
+                                </button>
+                            )}
+                        </div>
 
                         <div style={{ textAlign: 'center', marginTop: '14px' }}>
                             <button
