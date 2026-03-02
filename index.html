@@ -992,21 +992,53 @@
                 return (name || '').replace(/^\d+\s*x\s+/i, '').trim().toLowerCase();
             };
 
+            // Split a normalised name into meaningful words (drop single chars, punctuation)
+            const wordTokenise = (name) => {
+                return normaliseItemName(name)
+                    .replace(/[^a-z0-9\s]/g, '')
+                    .split(/\s+/)
+                    .filter(function(w) { return w.length > 1; });
+            };
+
+            // Jaccard similarity on word sets: |intersection| / |union|
+            const wordJaccard = (a, b) => {
+                const ta = wordTokenise(a);
+                const tb = wordTokenise(b);
+                if (ta.length === 0 && tb.length === 0) return 1;
+                if (ta.length === 0 || tb.length === 0) return 0;
+                // Build lookup from tb
+                const inB = {};
+                for (let i = 0; i < tb.length; i++) inB[tb[i]] = true;
+                let intersection = 0;
+                for (let i = 0; i < ta.length; i++) { if (inB[ta[i]]) intersection++; }
+                const union = ta.length + tb.length - intersection;
+                return intersection / union;
+            };
+
+            // Returns { assignment, score } or null.
+            // score === 1 → exact match; < 1 → fuzzy match above threshold.
             const getSuggestedAssignment = (itemName) => {
                 const needle = normaliseItemName(itemName);
                 if (!needle) return null;
                 const hist = getHistory(); // newest first
+                const FUZZY_THRESHOLD = 0.45;
+                let bestAssignment = null;
+                let bestScore = 0;
                 for (let i = 0; i < hist.length; i++) {
                     const entry = hist[i];
-                    const matchIdx = entry.items.findIndex(it => normaliseItemName(it.name) === needle);
-                    if (matchIdx === -1) continue;
-                    const a = entry.assignments[matchIdx];
-                    if (!a) continue;
-                    // Skip complex splits - too hard to summarise as a label
-                    if (a.type === 'custom' || a.type === 'quantity') continue;
-                    return a;
+                    for (let j = 0; j < entry.items.length; j++) {
+                        const candidate = normaliseItemName(entry.items[j].name);
+                        const score = candidate === needle ? 1.0 : wordJaccard(needle, candidate);
+                        if (score < FUZZY_THRESHOLD || score <= bestScore) continue;
+                        const a = entry.assignments[j];
+                        if (!a || a.type === 'custom' || a.type === 'quantity') continue;
+                        bestScore = score;
+                        bestAssignment = a;
+                        if (bestScore === 1.0) break; // can't do better
+                    }
+                    if (bestScore === 1.0) break;
                 }
-                return null;
+                return bestAssignment ? { assignment: bestAssignment, score: bestScore } : null;
             };
 
             const formatSuggestionLabel = (assignment) => {
@@ -2070,9 +2102,11 @@
 
                         {/* ── Learning suggestion hint ── */}
                         {(() => {
-                            const suggestion = getSuggestedAssignment(currentItem.name);
-                            const label = formatSuggestionLabel(suggestion);
+                            const result = getSuggestedAssignment(currentItem.name);
+                            if (!result) return null;
+                            const label = formatSuggestionLabel(result.assignment);
                             if (!label) return null;
+                            const exact = result.score === 1.0;
                             return (
                                 <div style={{
                                     display: 'flex', alignItems: 'center', gap: '6px',
@@ -2081,7 +2115,7 @@
                                     fontSize: '13px', color: '#9ca3af'
                                 }}>
                                     <span style={{ fontSize: '11px' }}>🔮</span>
-                                    <span>Probably: <strong style={{ color: '#6b7280' }}>{label}</strong></span>
+                                    <span>{exact ? 'Probably' : 'Maybe'}: <strong style={{ color: '#6b7280' }}>{label}</strong></span>
                                 </div>
                             );
                         })()}
