@@ -179,7 +179,60 @@
             groups: [
                 { name: 'Adults', members: ['Richard', 'Lisa'] },
                 { name: 'Kids', members: ['Molly', 'Rosie', 'Stu', 'Joe'] }
-            ]
+            ],
+            cloudBinId: '',
+            cloudApiKey: ''
+        };
+
+        // ── Cloud sync (JSONBin.io) ───────────────────────────────────────
+        // Stores { config: {...}, history: [...] } in a JSONBin bin.
+        // Credentials (cloudBinId, cloudApiKey) are kept local-only and never uploaded.
+        const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b';
+
+        const loadCloudData = function(binId, apiKey) {
+            return fetch(JSONBIN_BASE + '/' + binId + '/latest', {
+                headers: { 'X-Master-Key': apiKey, 'X-Bin-Meta': 'false' }
+            }).then(function(res) {
+                if (!res.ok) return null;
+                return res.json();
+            }).then(function(data) {
+                if (!data) return null;
+                // Support legacy format (plain array = history only)
+                if (Array.isArray(data)) return { config: null, history: data };
+                if (data.history || data.config) return data;
+                return null;
+            }).catch(function() { return null; });
+        };
+
+        const saveCloudData = function(cfg, history, binId, apiKey) {
+            // Strip credentials before uploading — they live in localStorage only
+            const cloudConfig = {};
+            const keys = Object.keys(cfg);
+            for (let i = 0; i < keys.length; i++) {
+                if (keys[i] !== 'cloudBinId' && keys[i] !== 'cloudApiKey') {
+                    cloudConfig[keys[i]] = cfg[keys[i]];
+                }
+            }
+            return fetch(JSONBIN_BASE + '/' + binId, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'X-Master-Key': apiKey },
+                body: JSON.stringify({ config: cloudConfig, history: history })
+            }).catch(function() {});
+        };
+
+        // Merge two history arrays by id, newest first, capped at 30 entries
+        const mergeHistories = function(local, cloud) {
+            const seen = {};
+            const merged = [];
+            const all = (local || []).concat(cloud || []);
+            for (let i = 0; i < all.length; i++) {
+                const e = all[i];
+                const key = String(e.id || e.savedAt || i);
+                if (!seen[key]) { seen[key] = true; merged.push(e); }
+            }
+            merged.sort(function(a, b) { return (b.savedAt || 0) - (a.savedAt || 0); });
+            if (merged.length > 30) merged.length = 30;
+            return merged;
         };
 
         const loadConfig = () => {
@@ -215,6 +268,7 @@
             const [collabSharedBy, setCollabSharedBy] = useState('');
             const [collabReturnerName, setCollabReturnerName] = useState('');
             const [sendBackCopied, setSendBackCopied] = useState(false);
+            const [cloudSyncStatus, setCloudSyncStatus] = useState(''); // '' | 'syncing' | 'synced' | 'error'
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState('');
             const [dragOver, setDragOver] = useState(false);
@@ -264,7 +318,16 @@
             });
 
             // ── Settings helpers ────────────────────────────────────────
-            const updateConfig = (newCfg) => { setConfig(newCfg); saveConfig(newCfg); };
+            const updateConfig = (newCfg) => {
+                setConfig(newCfg);
+                saveConfig(newCfg);
+                // Push updated config to cloud (with current history)
+                if (newCfg.cloudBinId && newCfg.cloudApiKey) {
+                    setCloudSyncStatus('syncing');
+                    saveCloudData(newCfg, getHistory(), newCfg.cloudBinId, newCfg.cloudApiKey)
+                        .then(function() { setCloudSyncStatus('synced'); });
+                }
+            };
 
             const getPersonGroup = (personName) =>
                 config.groups.find(g => g.members.includes(personName));
@@ -410,6 +473,30 @@
                         }
                     } catch (e) { /* ignore malformed links */ }
                 }
+            }, []);
+
+            // On mount: pull cloud data and merge history + apply config
+            useEffect(() => {
+                const binId = config.cloudBinId;
+                const apiKey = config.cloudApiKey;
+                if (!binId || !apiKey) return;
+                setCloudSyncStatus('syncing');
+                loadCloudData(binId, apiKey).then(function(cloudData) {
+                    if (!cloudData) { setCloudSyncStatus('error'); return; }
+                    // Merge histories
+                    const merged = mergeHistories(getHistory(), cloudData.history || []);
+                    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(merged)); } catch {}
+                    // Apply cloud config (people, groups) but keep local credentials
+                    if (cloudData.config && (cloudData.config.people || cloudData.config.groups)) {
+                        const newCfg = Object.assign({}, cloudData.config, {
+                            cloudBinId: binId,
+                            cloudApiKey: apiKey
+                        });
+                        setConfig(newCfg);
+                        saveConfig(newCfg);
+                    }
+                    setCloudSyncStatus('synced');
+                });
             }, []);
 
             const clearSession = () => {
@@ -957,6 +1044,14 @@
             };
 
             // ── History & share ──────────────────────────────────────────
+            const pushToCloud = (history) => {
+                if (config.cloudBinId && config.cloudApiKey) {
+                    setCloudSyncStatus('syncing');
+                    saveCloudData(config, history, config.cloudBinId, config.cloudApiKey)
+                        .then(function() { setCloudSyncStatus('synced'); });
+                }
+            };
+
             const saveToHistory = () => {
                 try {
                     const totals = calculateSummary();
@@ -974,6 +1069,7 @@
                     existing.unshift(entry);
                     if (existing.length > 30) existing.pop();
                     localStorage.setItem(HISTORY_KEY, JSON.stringify(existing));
+                    pushToCloud(existing);
                 } catch {}
             };
 
@@ -983,6 +1079,7 @@
                     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
                     setDeletingHistoryId(null);
                     setHistoryVersion(v => v + 1);
+                    pushToCloud(updated);
                 } catch {}
             };
 
@@ -1367,6 +1464,91 @@
                         {unassigned.length > 0 && (
                             <div style={{marginTop:'16px', padding:'12px', background:'#fef3c7', borderRadius:'8px', fontSize:'13px', color:'#92400e'}}>
                                 ⚠️ Not in any group: {unassigned.join(', ')}
+                            </div>
+                        )}
+
+                        {/* ── Cloud Sync ── */}
+                        <div className="cfg-section-head" style={{marginTop:'28px'}}>
+                            <span className="cfg-section-title">☁️ Cloud Sync</span>
+                        </div>
+                        <p style={{fontSize:'12px', color:'#6b7280', lineHeight:1.6, marginBottom:'12px'}}>
+                            Syncs people, groups and assignment history across all your devices.
+                            Create a free account at <strong>jsonbin.io</strong>, copy your Master Key, then tap <em>Create bin</em>.
+                        </p>
+                        <table className="cfg-table">
+                            <tbody>
+                                <tr>
+                                    <td style={{width:'90px'}}><strong>API Key</strong></td>
+                                    <td>
+                                        <input
+                                            className="cfg-input"
+                                            type="password"
+                                            placeholder="$2b$10$…"
+                                            value={config.cloudApiKey || ''}
+                                            onChange={e => {
+                                                const c = Object.assign({}, config, { cloudApiKey: e.target.value });
+                                                setConfig(c); saveConfig(c);
+                                            }}
+                                        />
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Bin ID</strong></td>
+                                    <td style={{display:'flex', gap:'6px', alignItems:'center'}}>
+                                        <input
+                                            className="cfg-input"
+                                            placeholder="64abc123…"
+                                            value={config.cloudBinId || ''}
+                                            onChange={e => {
+                                                const c = Object.assign({}, config, { cloudBinId: e.target.value });
+                                                setConfig(c); saveConfig(c);
+                                            }}
+                                            style={{flex:1}}
+                                        />
+                                        {(config.cloudApiKey && !config.cloudBinId) && (
+                                            <button className="cfg-btn cfg-btn-green" onClick={() => {
+                                                setCloudSyncStatus('syncing');
+                                                fetch(JSONBIN_BASE, {
+                                                    method: 'POST',
+                                                    headers: {
+                                                        'Content-Type': 'application/json',
+                                                        'X-Master-Key': config.cloudApiKey,
+                                                        'X-Bin-Name': 'BillSplitterData',
+                                                        'X-Bin-Private': 'true'
+                                                    },
+                                                    body: JSON.stringify({ config: (function(){ const c = Object.assign({}, config); delete c.cloudBinId; delete c.cloudApiKey; return c; })(), history: getHistory() })
+                                                }).then(function(r){ return r.json(); }).then(function(d){
+                                                    const newBinId = d.metadata && d.metadata.id;
+                                                    if (newBinId) {
+                                                        const c = Object.assign({}, config, { cloudBinId: newBinId });
+                                                        setConfig(c); saveConfig(c);
+                                                        setCloudSyncStatus('synced');
+                                                    } else { setCloudSyncStatus('error'); }
+                                                }).catch(function(){ setCloudSyncStatus('error'); });
+                                            }}>Create bin</button>
+                                        )}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        {config.cloudBinId && config.cloudApiKey && (
+                            <div style={{marginTop:'10px', display:'flex', gap:'10px', alignItems:'center'}}>
+                                <button className="cfg-btn" onClick={() => {
+                                    setCloudSyncStatus('syncing');
+                                    loadCloudData(config.cloudBinId, config.cloudApiKey).then(function(cloudData) {
+                                        if (!cloudData) { setCloudSyncStatus('error'); return; }
+                                        const merged = mergeHistories(getHistory(), cloudData.history || []);
+                                        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(merged)); } catch {}
+                                        if (cloudData.config && (cloudData.config.people || cloudData.config.groups)) {
+                                            const newCfg = Object.assign({}, cloudData.config, { cloudBinId: config.cloudBinId, cloudApiKey: config.cloudApiKey });
+                                            setConfig(newCfg); saveConfig(newCfg);
+                                        }
+                                        return saveCloudData(config, merged, config.cloudBinId, config.cloudApiKey);
+                                    }).then(function(){ setCloudSyncStatus('synced'); });
+                                }}>↕ Sync now</button>
+                                <span style={{fontSize:'12px', color: cloudSyncStatus === 'synced' ? '#10b981' : cloudSyncStatus === 'error' ? '#ef4444' : cloudSyncStatus === 'syncing' ? '#f59e0b' : '#9ca3af'}}>
+                                    {cloudSyncStatus === 'synced' ? '✓ Synced' : cloudSyncStatus === 'error' ? '✗ Sync failed — check your API key' : cloudSyncStatus === 'syncing' ? '⏳ Syncing…' : ''}
+                                </span>
                             </div>
                         )}
 
