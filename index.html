@@ -1709,9 +1709,18 @@
                         </div>
 
                         {unassignedCount > 0 && (
-                            <div style={{ background: '#fee2e2', borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '13px', color: '#991b1b', fontWeight: 600 }}>
-                                ⚠️ {unassignedCount} item{unassignedCount > 1 ? 's' : ''} not yet assigned
-                            </div>
+                            <button
+                                onClick={() => {
+                                    // Jump to first unassigned item and return to assignment screen
+                                    for (let i = 0; i < items.length; i++) {
+                                        if (!assignments[i]) { setCurrentItemIndex(i); break; }
+                                    }
+                                    setShowSummary(false);
+                                }}
+                                style={{ display: 'block', width: '100%', background: '#fee2e2', border: '2px solid #fca5a5', borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '13px', color: '#991b1b', fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}
+                            >
+                                ⚠️ {unassignedCount} item{unassignedCount > 1 ? 's' : ''} not yet assigned — tap to assign
+                            </button>
                         )}
 
                         {/* ── Two-panel layout ── */}
