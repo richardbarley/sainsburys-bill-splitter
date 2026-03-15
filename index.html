@@ -87,9 +87,11 @@
         .assignment-title { font-size: 14px; font-weight: 600; color: #4338ca; margin-bottom: 8px; }
         .assignment-detail { font-size: 13px; color: #4338ca; line-height: 1.6; }
         .assignment-detail-row { display: flex; justify-content: space-between; padding: 4px 0; }
-        /* Settings */
+        /* Settings & History floating buttons */
         .settings-btn { position: fixed; top: 20px; right: 20px; background: #6b7280; color: white; border: none; border-radius: 50%; width: 52px; height: 52px; font-size: 22px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 999; transition: all 0.2s; }
         .settings-btn:hover { background: #4b5563; transform: scale(1.05); }
+        .history-btn { position: fixed; top: 82px; right: 20px; background: #f59e0b; color: white; border: none; border-radius: 50%; width: 52px; height: 52px; font-size: 22px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 999; transition: all 0.2s; }
+        .history-btn:hover { background: #d97706; transform: scale(1.05); }
         .cfg-table { width: 100%; border-collapse: collapse; font-size: 14px; }
         .cfg-table th { text-align: left; padding: 8px 10px; background: #f3f4f6; color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
         .cfg-table td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
@@ -307,6 +309,8 @@
             const [shareTab, setShareTab] = useState('person'); // 'person' | 'list'
             const [deletingHistoryId, setDeletingHistoryId] = useState(null);
             const [historyVersion, setHistoryVersion] = useState(0);
+            const [historyExpandedTab, setHistoryExpandedTab] = useState('items'); // 'items' | 'byPerson'
+            const [historyLoading, setHistoryLoading] = useState(false);
 
             // Quantity-based split
             const [quantitySplit, setQuantitySplit] = useState({
@@ -1034,7 +1038,98 @@
                 return breakdown;
             };
 
+            // ── Per-person breakdown for a historical entry ──────────────
+            // Returns { personName: [{ name, amount }, ...], ... }
+            const buildHistoryBreakdown = (entry) => {
+                const hConfig = entry.config || { people: [], groups: [] };
+                const people = hConfig.people || [];
+                const groups = hConfig.groups || [];
+                const breakdown = {};
+                for (let p = 0; p < people.length; p++) breakdown[people[p]] = [];
+
+                for (let i = 0; i < entry.items.length; i++) {
+                    const item = entry.items[i];
+                    const a = entry.assignments[i];
+                    if (!a) continue;
+
+                    if (typeof a === 'string') {
+                        if (a === 'Shared') {
+                            if (people.length > 0) {
+                                const amt = item.price / people.length;
+                                for (let p = 0; p < people.length; p++) {
+                                    breakdown[people[p]].push({ name: item.name, amount: amt });
+                                }
+                            }
+                        } else {
+                            // named group
+                            let group = null;
+                            for (let g = 0; g < groups.length; g++) { if (groups[g].name === a) { group = groups[g]; break; } }
+                            if (group && group.members.length > 0) {
+                                const amt = item.price / group.members.length;
+                                for (let m = 0; m < group.members.length; m++) {
+                                    const member = group.members[m];
+                                    if (breakdown[member] !== undefined) breakdown[member].push({ name: item.name, amount: amt });
+                                }
+                            }
+                        }
+                    } else if (a.type === 'individuals') {
+                        const members = a.people || [];
+                        if (members.length > 0) {
+                            const amt = item.price / members.length;
+                            for (let m = 0; m < members.length; m++) {
+                                const member = members[m];
+                                if (breakdown[member] !== undefined) breakdown[member].push({ name: item.name, amount: amt });
+                            }
+                        }
+                    } else if (a.type === 'custom') {
+                        const keyMap = {};
+                        for (let p = 0; p < people.length; p++) keyMap[people[p].toLowerCase()] = people[p];
+                        if (people.length > 0) keyMap['you'] = people[0];
+                        const splitKeys = Object.keys(a.splits || {});
+                        for (let k = 0; k < splitKeys.length; k++) {
+                            const key = splitKeys[k];
+                            const pct = a.splits[key];
+                            const personName = keyMap[key] || keyMap[key.toLowerCase()];
+                            if (personName && breakdown[personName] !== undefined) {
+                                breakdown[personName].push({ name: item.name, amount: item.price * pct / 100 });
+                            }
+                        }
+                    } else if (a.type === 'quantity') {
+                        const ppu = item.price / (a.totalQty || 1);
+                        const g0 = groups[0], g1 = groups[1];
+                        if (g0 && g0.members.length > 0 && a.splits) {
+                            const amt = (ppu * (a.splits.youLisa || 0)) / g0.members.length;
+                            for (let m = 0; m < g0.members.length; m++) {
+                                if (breakdown[g0.members[m]] !== undefined) breakdown[g0.members[m]].push({ name: item.name, amount: amt });
+                            }
+                        }
+                        if (g1 && g1.members.length > 0 && a.splits) {
+                            const amt = (ppu * (a.splits.kids || 0)) / g1.members.length;
+                            for (let m = 0; m < g1.members.length; m++) {
+                                if (breakdown[g1.members[m]] !== undefined) breakdown[g1.members[m]].push({ name: item.name, amount: amt });
+                            }
+                        }
+                    }
+                }
+                return breakdown;
+            };
+
             // ── History & share ──────────────────────────────────────────
+            const openHistoryScreen = () => {
+                setShowHistory(true);
+                setExpandedPerson(null);
+                setHistoryExpandedTab('items');
+                if (!config.appKey) return;
+                setHistoryLoading(true);
+                loadData(config.appKey).then(function(remote) {
+                    setHistoryLoading(false);
+                    if (!remote) return;
+                    const merged = mergeHistories(getHistory(), remote.history || []);
+                    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(merged)); } catch {}
+                    setHistoryVersion(function(v) { return v + 1; });
+                });
+            };
+
             const pushToCloud = (history) => {
                 if (config.appKey) {
                     setCloudSyncStatus('syncing');
@@ -1050,6 +1145,7 @@
                     const entry = {
                         id: Date.now(),
                         savedAt: Date.now(),
+                        receiptDate: receiptDate || '',
                         items: [...items],
                         assignments: { ...assignments },
                         config: { people: [...config.people], groups: config.groups.map(g => ({ ...g, members: [...g.members] })) },
@@ -1524,8 +1620,12 @@
                 const history = getHistory();
                 return (
                     <div className="card">
-                        <button className="settings-btn" onClick={() => setShowHistory(false)} title="Close history">✕</button>
-                        <h1 className="title" style={{ marginBottom: '4px' }}>Past Bills</h1>
+                        <button className="settings-btn" onClick={() => { setShowHistory(false); }} title="Close history">✕</button>
+
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', marginBottom: '4px' }}>
+                            <h1 className="title" style={{ marginBottom: 0 }}>Past Bills</h1>
+                            {historyLoading && <span style={{ fontSize: '12px', color: '#9ca3af' }}>syncing…</span>}
+                        </div>
                         <p className="subtitle" style={{ marginBottom: '20px' }}>{history.length} saved bill{history.length !== 1 ? 's' : ''}</p>
 
                         {history.length === 0 ? (
@@ -1535,13 +1635,18 @@
                             </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                {history.map(entry => {
+                                {history.map(function(entry) {
                                     const isExpanded = expandedPerson === entry.id;
                                     const isConfirming = deletingHistoryId === entry.id;
-                                    const d = new Date(entry.savedAt);
-                                    const dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+                                    // Prefer the actual receipt date; fall back to savedAt
+                                    const displayDate = entry.receiptDate
+                                        ? entry.receiptDate
+                                        : new Date(entry.savedAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+                                    const savedStr = new Date(entry.savedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                                    const showSavedSeparately = entry.receiptDate && entry.receiptDate !== savedStr;
+
                                     return (
-                                        <div key={entry.id} style={{ border: `1px solid ${isConfirming ? '#fca5a5' : '#e5e7eb'}`, borderRadius: '12px', overflow: 'hidden', transition: 'border-color 0.2s' }}>
+                                        <div key={entry.id} style={{ border: '1px solid ' + (isConfirming ? '#fca5a5' : '#e5e7eb'), borderRadius: '12px', overflow: 'hidden', transition: 'border-color 0.2s' }}>
                                             {/* Header row */}
                                             {isConfirming ? (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', background: '#fef2f2' }}>
@@ -1558,51 +1663,111 @@
                                                     </div>
                                                 </div>
                                             ) : (
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', background: isExpanded ? '#fffbeb' : 'white' }}>
-                                                <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setExpandedPerson(isExpanded ? null : entry.id)}>
-                                                    <div style={{ fontWeight: 700, color: '#1f2937', fontSize: '14px' }}>{dateStr}</div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', background: isExpanded ? '#fffbeb' : 'white', cursor: 'pointer' }}
+                                                onClick={() => { setExpandedPerson(isExpanded ? null : entry.id); setHistoryExpandedTab('items'); }}>
+                                                <div style={{ flex: 1 }}>
+                                                    <div style={{ fontWeight: 700, color: '#1f2937', fontSize: '15px' }}>{displayDate}</div>
                                                     <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
                                                         {entry.items.length} items · {Object.keys(entry.assignments).length} assigned
+                                                        {showSavedSeparately && <span style={{ marginLeft: '6px', color: '#d1d5db' }}>· saved {savedStr}</span>}
                                                     </div>
                                                 </div>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                    <span style={{ fontWeight: 700, color: '#92400e', fontSize: '18px', cursor: 'pointer' }} onClick={() => setExpandedPerson(isExpanded ? null : entry.id)}>£{entry.totalBill.toFixed(2)}</span>
-                                                    <button onClick={e => { e.stopPropagation(); setDeletingHistoryId(entry.id); }}
+                                                    <span style={{ fontWeight: 700, color: '#92400e', fontSize: '18px' }}>£{(entry.totalBill || 0).toFixed(2)}</span>
+                                                    <button onClick={function(e) { e.stopPropagation(); setDeletingHistoryId(entry.id); }}
                                                         style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: '#d1d5db', padding: '4px', lineHeight: 1 }}
                                                         title="Delete this bill">🗑️</button>
-                                                    <span style={{ color: '#9ca3af', fontSize: '12px', cursor: 'pointer' }} onClick={() => setExpandedPerson(isExpanded ? null : entry.id)}>{isExpanded ? '▲' : '▼'}</span>
+                                                    <span style={{ color: '#9ca3af', fontSize: '12px' }}>{isExpanded ? '▲' : '▼'}</span>
                                                 </div>
                                             </div>
                                             )}
-                                            {/* Per-person totals (always visible) */}
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0', borderTop: '1px solid #f3f4f6', background: '#fafafa' }}>
-                                                {entry.config.people.map((person, idx) => (
-                                                    <div key={person} style={{ flex: '1 0 calc(33% - 1px)', padding: '8px 14px', borderRight: (idx + 1) % 3 !== 0 ? '1px solid #f3f4f6' : 'none', borderBottom: idx < entry.config.people.length - 3 ? '1px solid #f3f4f6' : 'none' }}>
-                                                        <div style={{ fontSize: '11px', color: '#6b7280' }}>{person}</div>
-                                                        <div style={{ fontWeight: 700, color: '#1f2937', fontSize: '13px' }}>£{(entry.totals[person] || 0).toFixed(2)}</div>
-                                                    </div>
-                                                ))}
+
+                                            {/* Per-person totals strip (always visible) */}
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', background: '#fafafa' }}>
+                                                {entry.config.people.map(function(person, idx) {
+                                                    return (
+                                                        <div key={person} style={{ flex: '1 0 calc(33% - 1px)', padding: '8px 14px', borderRight: (idx + 1) % 3 !== 0 ? '1px solid #f3f4f6' : 'none', borderBottom: idx < entry.config.people.length - 3 ? '1px solid #f3f4f6' : 'none' }}>
+                                                            <div style={{ fontSize: '11px', color: '#6b7280' }}>{person}</div>
+                                                            <div style={{ fontWeight: 700, color: '#1f2937', fontSize: '13px' }}>£{(entry.totals[person] || 0).toFixed(2)}</div>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
-                                            {/* Expanded: item list */}
+
+                                            {/* Expanded detail */}
                                             {isExpanded && (
-                                                <div style={{ borderTop: '1px solid #e5e7eb', maxHeight: '300px', overflowY: 'auto' }}>
-                                                    {entry.items.map((item, i) => {
-                                                        const a = entry.assignments[i];
-                                                        let who = '—';
-                                                        if (!a) who = 'Unassigned';
-                                                        else if (a === 'Shared') who = 'Everyone';
-                                                        else if (typeof a === 'string') who = a;
-                                                        else if (a.type === 'individuals') who = a.people.join(', ');
-                                                        else if (a.type === 'custom') who = 'Custom %';
-                                                        else if (a.type === 'quantity') who = 'Qty split';
+                                                <div style={{ borderTop: '1px solid #e5e7eb' }}>
+                                                    {/* Tab toggle */}
+                                                    <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+                                                        <button
+                                                            onClick={() => setHistoryExpandedTab('items')}
+                                                            style={{ flex: 1, padding: '9px', border: 'none', background: historyExpandedTab === 'items' ? 'white' : 'transparent', fontSize: '12px', fontWeight: 700, color: historyExpandedTab === 'items' ? '#1f2937' : '#9ca3af', cursor: 'pointer', borderBottom: historyExpandedTab === 'items' ? '2px solid #f59e0b' : '2px solid transparent' }}>
+                                                            All Items
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setHistoryExpandedTab('byPerson')}
+                                                            style={{ flex: 1, padding: '9px', border: 'none', background: historyExpandedTab === 'byPerson' ? 'white' : 'transparent', fontSize: '12px', fontWeight: 700, color: historyExpandedTab === 'byPerson' ? '#1f2937' : '#9ca3af', cursor: 'pointer', borderBottom: historyExpandedTab === 'byPerson' ? '2px solid #f59e0b' : '2px solid transparent' }}>
+                                                            By Person
+                                                        </button>
+                                                    </div>
+
+                                                    {/* All Items tab */}
+                                                    {historyExpandedTab === 'items' && (
+                                                        <div style={{ maxHeight: '340px', overflowY: 'auto' }}>
+                                                            {entry.items.map(function(item, i) {
+                                                                const a = entry.assignments[i];
+                                                                let who = 'Unassigned';
+                                                                if (a === 'Shared') who = 'Everyone';
+                                                                else if (typeof a === 'string') who = a;
+                                                                else if (a && a.type === 'individuals') who = a.people.join(', ');
+                                                                else if (a && a.type === 'custom') who = 'Custom split';
+                                                                else if (a && a.type === 'quantity') who = 'Qty split';
+                                                                return (
+                                                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', borderBottom: i < entry.items.length - 1 ? '1px solid #f9fafb' : 'none', fontSize: '13px' }}>
+                                                                        <span style={{ color: '#1f2937', flex: 1, paddingRight: '8px' }}>{item.name}</span>
+                                                                        <span style={{ color: '#9ca3af', fontSize: '11px', marginRight: '10px', whiteSpace: 'nowrap' }}>{who}</span>
+                                                                        <span style={{ fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>£{item.price.toFixed(2)}</span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {/* By Person tab */}
+                                                    {historyExpandedTab === 'byPerson' && (function() {
+                                                        const personBreakdown = buildHistoryBreakdown(entry);
+                                                        const people = entry.config.people || [];
                                                         return (
-                                                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 16px', borderBottom: i < entry.items.length - 1 ? '1px solid #f9fafb' : 'none', fontSize: '13px' }}>
-                                                                <span style={{ color: '#1f2937', flex: 1, paddingRight: '8px' }}>{item.name}</span>
-                                                                <span style={{ color: '#9ca3af', fontSize: '11px', marginRight: '10px', whiteSpace: 'nowrap' }}>{who}</span>
-                                                                <span style={{ fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>£{item.price.toFixed(2)}</span>
+                                                            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                                                {people.map(function(person) {
+                                                                    const personItems = personBreakdown[person] || [];
+                                                                    const personTotal = entry.totals[person] || 0;
+                                                                    return (
+                                                                        <div key={person} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                                                            {/* Person header */}
+                                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', background: '#fffbeb' }}>
+                                                                                <span style={{ fontWeight: 700, color: '#1f2937', fontSize: '13px' }}>{person}</span>
+                                                                                <span style={{ fontWeight: 700, color: '#92400e', fontSize: '14px' }}>£{personTotal.toFixed(2)}</span>
+                                                                            </div>
+                                                                            {/* Person's items */}
+                                                                            {personItems.length === 0 ? (
+                                                                                <div style={{ padding: '6px 16px 8px', fontSize: '12px', color: '#9ca3af' }}>No items</div>
+                                                                            ) : (
+                                                                                personItems.map(function(pi, j) {
+                                                                                    return (
+                                                                                        <div key={j} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 16px 5px 24px', fontSize: '12px', borderTop: '1px solid #f9fafb' }}>
+                                                                                            <span style={{ color: '#4b5563', flex: 1, paddingRight: '8px' }}>{pi.name}</span>
+                                                                                            <span style={{ fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>£{pi.amount.toFixed(2)}</span>
+                                                                                        </div>
+                                                                                    );
+                                                                                })
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
                                                             </div>
                                                         );
-                                                    })}
+                                                    })()}
                                                 </div>
                                             )}
                                         </div>
@@ -1623,6 +1788,7 @@
                 return (
                     <div className="card">
                         <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
+                        <button className="history-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
                         <div className="loading">Loading PDF...</div>
                     </div>
                 );
@@ -1637,6 +1803,7 @@
                 return (
                     <div className="card">
                         <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
+                        <button className="history-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
 
                         {/* ── Shared bill / completed banner ── */}
                         {sharedBillBanner && (
@@ -1971,6 +2138,7 @@
                     return (
                         <div className="card">
                             <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
+                            <button className="history-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
                             <h2 className="title" style={{ fontSize: '24px' }}>Individual Split</h2>
                             <p className="subtitle">{currentItem.name} · £{currentItem.price.toFixed(2)}</p>
 
@@ -2220,6 +2388,7 @@
                     <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
                     <div className="card" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                         <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
+                        <button className="history-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
 
                         {/* ── Fixed header: progress + banners (consistent height) ── */}
                         <div style={{ flexShrink: 0 }}>
@@ -2482,6 +2651,7 @@
             return (
                 <div className="card">
                     <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
+                    <button className="history-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
                     <h1 className="title">Sainsbury's Bill Splitter</h1>
                     <p className="subtitle">Upload your Sainsbury's receipt PDF to split the bill</p>
 
@@ -2507,17 +2677,6 @@
                         style={{ display: 'none' }}
                     />
 
-                    {/* History link */}
-                    {getHistory().length > 0 && (
-                        <div style={{ textAlign: 'center', marginTop: '16px' }}>
-                            <button
-                                onClick={() => setShowHistory(true)}
-                                style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '13px', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#d1d5db' }}
-                            >
-                                📋 View past bills ({getHistory().length})
-                            </button>
-                        </div>
-                    )}
                 </div>
             );
         };
