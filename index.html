@@ -28,7 +28,7 @@
         .progress-fill { height: 100%; background: linear-gradient(90deg, #f97316, #fb923c); transition: width 0.3s; }
         .progress-text { text-align: right; color: #6b7280; font-size: 14px; margin-bottom: 24px; }
         .item-card { background: #fffbeb; border-radius: 12px; padding: 24px; margin-bottom: 24px; border-left: 4px solid #f59e0b; }
-        .item-name { font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 8px; line-height: 1.4; }
+        .item-name { font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 8px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
         .item-details { display: flex; gap: 24px; color: #6b7280; font-size: 14px; margin-bottom: 20px; }
         .button { padding: 16px 24px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
         .button-primary { background: #667eea; color: white; }
@@ -2260,64 +2260,64 @@
 
                 return (
                     <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
-                    <div className="card" style={{ flex: 1, minWidth: 0 }}>
+                    <div className="card" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                         <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px', paddingRight: '60px' }}>
-                            <span style={{ fontSize: '13px', color: '#6b7280', fontWeight: 600 }}>Item {currentItemIndex + 1} of {items.length}</span>
-                            <span style={{ fontSize: '12px', color: '#9ca3af' }}>{progress.toFixed(0)}%</span>
-                        </div>
-                        <div className="progress-bar" style={{ marginBottom: '20px' }}>
-                            <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+
+                        {/* ── Fixed header: progress + banners (consistent height) ── */}
+                        <div style={{ flexShrink: 0 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px', paddingRight: '60px' }}>
+                                <span style={{ fontSize: '13px', color: '#6b7280', fontWeight: 600 }}>Item {currentItemIndex + 1} of {items.length}</span>
+                                <span style={{ fontSize: '12px', color: '#9ca3af' }}>{progress.toFixed(0)}%</span>
+                            </div>
+                            <div className="progress-bar" style={{ marginBottom: '16px' }}>
+                                <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+                            </div>
+
+                            {collabMode && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#eff6ff', border: '2px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#1e40af' }}>
+                                    <span style={{ fontSize: '18px' }}>📋</span>
+                                    <div>
+                                        {collabSharedBy
+                                            ? <><strong>{collabSharedBy}</strong> has shared this bill with you — assign remaining items, then use "Send back" on the summary.</>
+                                            : <>Someone has shared this bill with you — assign remaining items, then use "Send back" on the summary.</>
+                                        }
+                                    </div>
+                                </div>
+                            )}
+
+                            {reviewMode && (
+                                <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#92400e', fontWeight: 600 }}>
+                                    ✏️ Editing — will return to summary when saved
+                                </div>
+                            )}
                         </div>
 
-                        {/* ── Collab mode banner ── */}
-                        {collabMode && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#eff6ff', border: '2px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#1e40af' }}>
-                                <span style={{ fontSize: '18px' }}>📋</span>
-                                <div>
-                                    {collabSharedBy
-                                        ? <><strong>{collabSharedBy}</strong> has shared this bill with you — please assign the remaining items, then use "Send back" on the summary screen.</>
-                                        : <>Someone has shared this bill with you — please assign the remaining items, then use "Send back" on the summary screen.</>
-                                    }
+                        {/* ── Scrollable item info (name varies in length) ── */}
+                        <div style={{ overflowY: 'auto', maxHeight: '28vh', marginBottom: '12px', flexShrink: 0 }}>
+                            <div className="item-card" style={{ marginBottom: '8px' }}>
+                                <div className="item-name">{currentItem.name}</div>
+                                <div className="item-details">
+                                    <span><strong>Qty:</strong> {currentItem.quantity}</span>
+                                    <span><strong>Price:</strong> £{currentItem.price.toFixed(2)}</span>
                                 </div>
                             </div>
-                        )}
 
-                        <div className="item-card">
-                            <div className="item-name">{currentItem.name}</div>
-                            <div className="item-details">
-                                <span><strong>Qty:</strong> {currentItem.quantity}</span>
-                                <span><strong>Price:</strong> £{currentItem.price.toFixed(2)}</span>
-                            </div>
+                            {(() => {
+                                const result = getSuggestedAssignment(currentItem.name);
+                                if (!result) return null;
+                                const label = formatSuggestionLabel(result.assignment);
+                                if (!label) return null;
+                                const exact = result.score === 1.0;
+                                return (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', padding: '6px 12px', background: '#f3f4f6', borderRadius: '8px', fontSize: '13px', color: '#9ca3af' }}>
+                                        <span style={{ fontSize: '11px' }}>🔮</span>
+                                        <span>{exact ? 'Probably' : 'Maybe'}: <strong style={{ color: '#6b7280' }}>{label}</strong></span>
+                                    </div>
+                                );
+                            })()}
+
+                            {renderAssignmentIndicator()}
                         </div>
-
-                        {/* ── Learning suggestion hint ── */}
-                        {(() => {
-                            const result = getSuggestedAssignment(currentItem.name);
-                            if (!result) return null;
-                            const label = formatSuggestionLabel(result.assignment);
-                            if (!label) return null;
-                            const exact = result.score === 1.0;
-                            return (
-                                <div style={{
-                                    display: 'flex', alignItems: 'center', gap: '6px',
-                                    marginBottom: '8px', padding: '6px 12px',
-                                    background: '#f3f4f6', borderRadius: '8px',
-                                    fontSize: '13px', color: '#9ca3af'
-                                }}>
-                                    <span style={{ fontSize: '11px' }}>🔮</span>
-                                    <span>{exact ? 'Probably' : 'Maybe'}: <strong style={{ color: '#6b7280' }}>{label}</strong></span>
-                                </div>
-                            );
-                        })()}
-
-                        {reviewMode && (
-                            <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#92400e', fontWeight: 600 }}>
-                                ✏️ Editing — will return to summary when saved
-                            </div>
-                        )}
-
-                        {renderAssignmentIndicator()}
 
                         {/* ── Unified people picker ── */}
                         <div style={{ marginTop: '4px', background: '#f9fafb', borderRadius: '12px', padding: '16px' }}>
