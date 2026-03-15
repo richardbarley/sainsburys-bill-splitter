@@ -2612,6 +2612,17 @@
                             )}
                         </div>
 
+                        {!reviewMode && currentItemIndex < items.length - 1 && (
+                            <div style={{ textAlign: 'center', marginTop: '8px' }}>
+                                <button
+                                    onClick={() => setShowSummary(true)}
+                                    style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}
+                                >
+                                    Jump to summary →
+                                </button>
+                            </div>
+                        )}
+
                         <div style={{ textAlign: 'center', marginTop: '14px' }}>
                             <button
                                 onClick={clearSession}
