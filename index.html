@@ -1976,12 +1976,8 @@
                                 {bills.map(function(entry) {
                                     const isExpanded = expandedPerson === entry.id;
                                     const isConfirming = deletingHistoryId === entry.id;
-                                    // Prefer the actual receipt date; fall back to savedAt
-                                    const displayDate = entry.receiptDate
-                                        ? entry.receiptDate
-                                        : new Date(entry.savedAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-                                    const savedStr = new Date(entry.savedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-                                    const showSavedSeparately = entry.receiptDate && entry.receiptDate !== savedStr;
+                                    const receiptDateStr = entry.receiptDate || null;
+                                    const uploadedStr = new Date(entry.savedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
                                     const entryItems = entry.items || [];
                                     const entryAssignments = entry.assignments || {};
@@ -2017,9 +2013,12 @@
                                                 onClick={() => { setExpandedPerson(isExpanded ? null : entry.id); setHistoryExpandedTab('items'); }}>
                                                 <div style={{ flex: 1, minWidth: 0 }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                        <span style={{ fontWeight: 700, color: '#1f2937', fontSize: '15px' }}>{displayDate}</span>
+                                                        <span style={{ fontWeight: 700, color: '#1f2937', fontSize: '15px' }}>
+                                                            {receiptDateStr || <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Date unknown</span>}
+                                                        </span>
                                                         {isActive && <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400e', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '4px', padding: '1px 6px' }}>IN PROGRESS</span>}
                                                     </div>
+                                                    <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '1px' }}>Uploaded {uploadedStr}</div>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
                                                         <span style={{
                                                             fontSize: '11px', fontWeight: 600, borderRadius: '4px', padding: '2px 7px',
@@ -2245,9 +2244,10 @@
                         <div className="summary-header">
                             <div>
                                 <h1 className="title" style={{ marginBottom: '4px' }}>Bill Summary</h1>
-                                <p className="subtitle" style={{ marginBottom: 0 }}>
-                                    {items.length} items · {Object.keys(assignments).length} assigned
-                                </p>
+                                {receiptDate
+                                    ? <p className="subtitle" style={{ marginBottom: 0 }}>🗓 {receiptDate} · {items.length} items</p>
+                                    : <p className="subtitle" style={{ marginBottom: 0 }}>{items.length} items</p>
+                                }
                             </div>
                             <div style={{ background: 'linear-gradient(135deg, #fed7aa 0%, #fb923c 100%)', borderRadius: '12px', padding: '12px 20px', textAlign: 'right', flexShrink: 0 }}>
                                 <div style={{ fontSize: '11px', opacity: 0.75, marginBottom: '2px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Bill</div>
