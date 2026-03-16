@@ -447,6 +447,17 @@
                 kids: 0
             });
 
+            // Bill assignment flow
+            const [billAssignedTo, setBillAssignedTo] = useState(null);
+            const [billAssignedBy, setBillAssignedBy] = useState(null);
+            const [billAssignedStatus, setBillAssignedStatus] = useState(null);
+            const [billCompletedBy, setBillCompletedBy] = useState(null);
+            const [billCompletedAt, setBillCompletedAt] = useState(null);
+            const [isAssigneeMode, setIsAssigneeMode] = useState(false);
+            const [showAssignModal, setShowAssignModal] = useState(null);
+            const [notification, setNotification] = useState(null);
+            const [appUsers, setAppUsers] = useState([]);
+
             // ── Settings helpers ────────────────────────────────────────
             const updateConfig = (newCfg) => {
                 setConfig(newCfg);
@@ -1257,7 +1268,12 @@
                         assignments: { ...assignments },
                         config: { people: [...config.people], groups: config.groups.map(g => ({ ...g, members: [...g.members] })) },
                         totals,
-                        totalBill
+                        totalBill,
+                        assignedTo: billAssignedTo || null,
+                        assignedBy: billAssignedBy || null,
+                        assignedStatus: billAssignedStatus || null,
+                        completedBy: billCompletedBy || null,
+                        completedAt: billCompletedAt || null
                     };
                     const existing = getHistory();
                     let idx = -1;
@@ -1297,7 +1313,7 @@
             };
 
             // Load a history entry into the active session so the user can continue assigning
-            const loadBillForEditing = (entry) => {
+            const loadBillForEditing = (entry, assigneeMode) => {
                 const entryItems = entry.items || [];
                 if (entryItems.length === 0) return;
                 setSessionId(entry.id);
@@ -1308,6 +1324,95 @@
                 setShowSummary(false);
                 setShowHistory(false);
                 setReviewMode(false);
+                setShowUnassignedOnly(true);
+                setBillAssignedTo(entry.assignedTo || null);
+                setBillAssignedBy(entry.assignedBy || null);
+                setBillAssignedStatus(entry.assignedStatus || null);
+                setBillCompletedBy(entry.completedBy || null);
+                setBillCompletedAt(entry.completedAt || null);
+                setIsAssigneeMode(assigneeMode === true);
+            };
+
+            const fetchAppUsers = () => {
+                if (appUsers.length > 0) return;
+                getAuthToken().then(function(token) {
+                    if (!token) return;
+                    fetch('/api/users', { headers: { 'Authorization': 'Bearer ' + token } })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) { if (data.users) setAppUsers(data.users); })
+                        .catch(function() {});
+                });
+            };
+
+            const assignBillTo = (billEntry, targetEmail) => {
+                const existing = getHistory();
+                let idx = -1;
+                for (let i = 0; i < existing.length; i++) {
+                    if (existing[i].id === billEntry.id) { idx = i; break; }
+                }
+                if (idx < 0) return;
+                existing[idx] = Object.assign({}, existing[idx], {
+                    assignedTo: targetEmail,
+                    assignedBy: _user ? _user.email : '',
+                    assignedStatus: 'pending',
+                    updatedAt: Date.now()
+                });
+                try { localStorage.setItem(HISTORY_KEY, JSON.stringify(existing)); } catch {}
+                setHistoryVersion(function(v) { return v + 1; });
+                pushToCloud(existing);
+                const url = window.location.origin + window.location.pathname + '?bill=' + billEntry.id;
+                const label = billEntry.receiptDate || new Date(billEntry.savedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                const text = 'Could you help me assign the items on the ' + label + ' Sainsbury\'s receipt?';
+                if (navigator.share) {
+                    navigator.share({ title: 'Bill Assignment', text: text, url: url }).catch(function() {});
+                } else {
+                    navigator.clipboard.writeText(text + ' ' + url).catch(function() {});
+                }
+                setShowAssignModal(null);
+            };
+
+            const markBillComplete = () => {
+                const now = Date.now();
+                const completedByEmail = _user ? _user.email : 'Unknown';
+                setBillAssignedStatus('completed');
+                setBillCompletedBy(completedByEmail);
+                setBillCompletedAt(now);
+                setIsAssigneeMode(false);
+                if (sessionId) {
+                    const existing = getHistory();
+                    let idx = -1;
+                    for (let i = 0; i < existing.length; i++) {
+                        if (existing[i].id === sessionId) { idx = i; break; }
+                    }
+                    if (idx >= 0) {
+                        existing[idx] = Object.assign({}, existing[idx], {
+                            assignedStatus: 'completed',
+                            completedBy: completedByEmail,
+                            completedAt: now,
+                            updatedAt: now
+                        });
+                        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(existing)); } catch {}
+                        setHistoryVersion(function(v) { return v + 1; });
+                        pushToCloud(existing);
+                    }
+                }
+                const assignedByEmail = billAssignedBy;
+                if (assignedByEmail) {
+                    getAuthToken().then(function(token) {
+                        if (!token) return;
+                        fetch('/api/notify', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                            body: JSON.stringify({
+                                completedBy: completedByEmail,
+                                receiptDate: receiptDate || 'your receipt',
+                                billId: sessionId,
+                                assignedBy: assignedByEmail
+                            })
+                        }).catch(function() {});
+                    });
+                }
+                setShowSummary(true);
             };
 
             // ── Learning / suggestions ────────────────────────────────────
@@ -1544,6 +1649,13 @@
             if (showSettings) {
                 const unassigned = config.people.filter(p => !getPersonGroup(p));
                 return (
+                    <>
+                    {notification && (
+                        <div style={{ position: 'fixed', top: 'max(20px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#065f46', color: 'white', borderRadius: '12px', padding: '12px 20px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600, maxWidth: '90vw', textAlign: 'center', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span>✅ {notification.message}</span>
+                            <button onClick={function() { setNotification(null); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '16px', padding: '0', lineHeight: 1, flexShrink: 0 }}>✕</button>
+                        </div>
+                    )}
                     <div className="card">
                         <div className="screen-bar" style={{ marginBottom: '4px' }}>
                             <h1 className="title" style={{ fontSize: '22px', marginBottom: 0 }}>Settings</h1>
@@ -1724,6 +1836,7 @@
                             Done
                         </button>
                     </div>
+                    </>
                 );
             }
             // ────────────────────────────────────────────────────────────
@@ -1731,12 +1844,56 @@
             // ── User Management Screen ───────────────────────────────────
             if (showUsers) return <UserManagementScreen onClose={() => setShowUsers(false)} />;
 
+            // Real-time: notify when an assigned bill is completed
+            useEffect(function() {
+                if (!_sb || !_user) return;
+                const channel = _sb.channel('bill-completions-' + (_user.id || 'user'))
+                    .on('postgres_changes', {
+                        event: 'UPDATE',
+                        schema: 'public',
+                        table: 'bill_history'
+                    }, function(payload) {
+                        if (payload.new.assigned_status === 'completed' &&
+                            payload.new.assigned_by === _user.email &&
+                            payload.new.completed_by !== _user.email) {
+                            const who = (payload.new.completed_by || 'Someone').split('@')[0];
+                            const when = payload.new.receipt_date || 'a receipt';
+                            setNotification({ message: who + ' has finished assigning the ' + when + ' receipt' });
+                            setHistoryVersion(function(v) { return v + 1; });
+                            setTimeout(function() { setNotification(null); }, 8000);
+                        }
+                    })
+                    .subscribe();
+                return function() { _sb.removeChannel(channel); };
+            }, []);
+
+            // Handle ?bill=<id> link: load the specific bill when history becomes available
+            useEffect(function() {
+                if (!window._pendingBillId) return;
+                const pendingId = window._pendingBillId;
+                const allBills = getHistory();
+                for (let i = 0; i < allBills.length; i++) {
+                    if (allBills[i].id === pendingId) {
+                        window._pendingBillId = null;
+                        loadBillForEditing(allBills[i], true);
+                        break;
+                    }
+                }
+            }, [historyVersion]);
+
             // ── History Screen ──────────────────────────────────────────
             if (showHistory) {
                 void historyVersion; // read to trigger re-render when history changes
                 const _rawBills = getHistory();
                 const bills = Array.isArray(_rawBills) ? _rawBills : [];
                 return (
+                    <>
+                    {notification && (
+                        <div style={{ position: 'fixed', top: 'max(20px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#065f46', color: 'white', borderRadius: '12px', padding: '12px 20px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600, maxWidth: '90vw', textAlign: 'center', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span>✅ {notification.message}</span>
+                            <button onClick={function() { setNotification(null); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '16px', padding: '0', lineHeight: 1, flexShrink: 0 }}>✕</button>
+                        </div>
+                    )}
                     <div className="card">
                         <div className="screen-bar" style={{ marginBottom: '4px' }}>
                             <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
@@ -1811,10 +1968,27 @@
                                                             {fullyAssigned ? '✓ Fully assigned' : assignedCount + ' of ' + totalCount + ' assigned'}
                                                         </span>
                                                         {updatedStr && <span style={{ fontSize: '11px', color: '#9ca3af' }}>· updated {updatedStr}</span>}
+                                                        {entry.assignedTo && (
+                                                            <span style={{
+                                                                fontSize: '11px', fontWeight: 600, borderRadius: '4px', padding: '2px 7px',
+                                                                background: entry.assignedStatus === 'completed' ? '#dcfce7' : '#eff6ff',
+                                                                color: entry.assignedStatus === 'completed' ? '#15803d' : '#1d4ed8',
+                                                                border: '1px solid ' + (entry.assignedStatus === 'completed' ? '#bbf7d0' : '#bfdbfe')
+                                                            }}>
+                                                                {entry.assignedStatus === 'completed'
+                                                                    ? '✅ Done by ' + (entry.completedBy || entry.assignedTo).split('@')[0]
+                                                                    : '⏳ Assigned to ' + entry.assignedTo.split('@')[0]}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
                                                     <span style={{ fontWeight: 700, color: '#92400e', fontSize: '18px' }}>£{(entry.totalBill || 0).toFixed(2)}</span>
+                                                    <button onClick={function(e) { e.stopPropagation(); fetchAppUsers(); setShowAssignModal(isExpanded && showAssignModal === entry.id ? null : entry.id); }}
+                                                        style={{ background: showAssignModal === entry.id ? '#1d4ed8' : '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', fontSize: '12px', fontWeight: 600, color: showAssignModal === entry.id ? 'white' : '#1d4ed8', cursor: 'pointer', padding: '4px 10px', lineHeight: 1.4, flexShrink: 0 }}
+                                                        title="Assign to another user">
+                                                        Assign
+                                                    </button>
                                                     <button onClick={function(e) { e.stopPropagation(); loadBillForEditing(entry); }}
                                                         style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', fontSize: '12px', fontWeight: 600, color: '#15803d', cursor: 'pointer', padding: '4px 10px', lineHeight: 1.4, flexShrink: 0 }}
                                                         title="Load this bill and continue assigning">
@@ -1826,6 +2000,34 @@
                                                     <span style={{ color: '#9ca3af', fontSize: '12px' }}>{isExpanded ? '▲' : '▼'}</span>
                                                 </div>
                                             </div>
+                                            )}
+
+                                            {/* Assign user picker */}
+                                            {showAssignModal === entry.id && (
+                                                <div style={{ padding: '12px 16px', borderTop: '1px solid #e5e7eb', background: '#f0f9ff' }}>
+                                                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#1d4ed8', marginBottom: '8px' }}>Assign to:</div>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                                                        {appUsers
+                                                            .filter(function(u) { return !_user || u.email !== _user.email; })
+                                                            .map(function(u) {
+                                                                return (
+                                                                    <button key={u.id}
+                                                                        onClick={function() { assignBillTo(entry, u.email); }}
+                                                                        style={{ padding: '6px 14px', background: 'white', border: '1px solid #bfdbfe', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', fontWeight: 600, color: '#1d4ed8' }}>
+                                                                        {u.email.split('@')[0]}
+                                                                    </button>
+                                                                );
+                                                            })
+                                                        }
+                                                        {appUsers.filter(function(u) { return !_user || u.email !== _user.email; }).length === 0 && (
+                                                            <span style={{ fontSize: '13px', color: '#9ca3af' }}>No other users yet — invite someone in Settings → Manage Users</span>
+                                                        )}
+                                                    </div>
+                                                    <button onClick={function() { setShowAssignModal(null); }}
+                                                        style={{ background: 'none', border: 'none', fontSize: '12px', color: '#9ca3af', cursor: 'pointer', padding: 0 }}>
+                                                        Cancel
+                                                    </button>
+                                                </div>
                                             )}
 
                                             {/* Per-person totals strip (always visible) */}
@@ -1926,12 +2128,20 @@
                             ← Back
                         </button>
                     </div>
+                    </>
                 );
             }
             // ────────────────────────────────────────────────────────────
 
             if (loading) {
                 return (
+                    <>
+                    {notification && (
+                        <div style={{ position: 'fixed', top: 'max(20px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#065f46', color: 'white', borderRadius: '12px', padding: '12px 20px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600, maxWidth: '90vw', textAlign: 'center', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span>✅ {notification.message}</span>
+                            <button onClick={function() { setNotification(null); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '16px', padding: '0', lineHeight: 1, flexShrink: 0 }}>✕</button>
+                        </div>
+                    )}
                     <div className="card">
                         <div className="screen-bar">
                             <span style={{ fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Reading receipt…</span>
@@ -1942,6 +2152,7 @@
                         </div>
                         <div className="loading">Loading PDF...</div>
                     </div>
+                    </>
                 );
             }
 
@@ -1952,6 +2163,13 @@
                 const unassignedCount = items.filter((_, i) => !assignments[i]).length;
 
                 return (
+                    <>
+                    {notification && (
+                        <div style={{ position: 'fixed', top: 'max(20px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#065f46', color: 'white', borderRadius: '12px', padding: '12px 20px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600, maxWidth: '90vw', textAlign: 'center', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span>✅ {notification.message}</span>
+                            <button onClick={function() { setNotification(null); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '16px', padding: '0', lineHeight: 1, flexShrink: 0 }}>✕</button>
+                        </div>
+                    )}
                     <div className="card">
                         <div className="screen-bar" style={{ marginBottom: '12px' }}>
                             <span style={{ fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Summary</span>
@@ -2211,12 +2429,20 @@
                             </div>
                         )}
                     </div>
+                    </>
                 );
             }
 
             if (items.length > 0 && currentItem) {
                 if (showCustomSplit) {
                     return (
+                        <>
+                        {notification && (
+                            <div style={{ position: 'fixed', top: 'max(20px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#065f46', color: 'white', borderRadius: '12px', padding: '12px 20px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600, maxWidth: '90vw', textAlign: 'center', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <span>✅ {notification.message}</span>
+                                <button onClick={function() { setNotification(null); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '16px', padding: '0', lineHeight: 1, flexShrink: 0 }}>✕</button>
+                            </div>
+                        )}
                         <div className="card">
                             <div className="screen-bar">
                                 <div>
@@ -2421,6 +2647,7 @@
                                 </div>
                             )}
                         </div>
+                        </>
                     );
                 }
 
@@ -2474,6 +2701,13 @@
                 const overallProgress = items.length > 0 ? ((items.length - unassignedCount) / items.length) * 100 : 0;
 
                 return (
+                    <>
+                    {notification && (
+                        <div style={{ position: 'fixed', top: 'max(20px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#065f46', color: 'white', borderRadius: '12px', padding: '12px 20px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600, maxWidth: '90vw', textAlign: 'center', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span>✅ {notification.message}</span>
+                            <button onClick={function() { setNotification(null); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '16px', padding: '0', lineHeight: 1, flexShrink: 0 }}>✕</button>
+                        </div>
+                    )}
                     <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
                     <div className="card" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                         {/* ── Fixed header: progress + banners (consistent height) ── */}
@@ -2516,6 +2750,20 @@
                             {reviewMode && (
                                 <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#92400e', fontWeight: 600 }}>
                                     ✏️ Editing — will return to summary when saved
+                                </div>
+                            )}
+
+                            {isAssigneeMode && (
+                                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px' }}>
+                                    <div style={{ fontSize: '13px', color: '#1d4ed8', fontWeight: 600, marginBottom: unassignedCount === 0 ? '10px' : '0' }}>
+                                        📋 {billAssignedBy ? billAssignedBy.split('@')[0] + ' has asked you to assign this receipt' : 'You\'ve been asked to assign this receipt'}
+                                    </div>
+                                    {unassignedCount === 0 && (
+                                        <button onClick={markBillComplete}
+                                            style={{ padding: '8px 18px', background: '#16a34a', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, color: 'white', cursor: 'pointer', marginTop: '2px' }}>
+                                            ✅ Mark as complete
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -2739,6 +2987,12 @@
                                     Jump to summary →
                                 </button>
                             )}
+                            {isAssigneeMode && (
+                                <button onClick={markBillComplete}
+                                    style={{ background: 'none', border: 'none', color: '#16a34a', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}>
+                                    ✅ Mark complete
+                                </button>
+                            )}
                         </div>
                     </div>
                     <div className="running-totals-sidebar">
@@ -2763,10 +3017,18 @@
                         </div>
                     </div>
                     </div>
+                    </>
                 );
             }
 
             return (
+                <>
+                {notification && (
+                    <div style={{ position: 'fixed', top: 'max(20px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#065f46', color: 'white', borderRadius: '12px', padding: '12px 20px', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600, maxWidth: '90vw', textAlign: 'center', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span>✅ {notification.message}</span>
+                        <button onClick={function() { setNotification(null); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: '16px', padding: '0', lineHeight: 1, flexShrink: 0 }}>✕</button>
+                    </div>
+                )}
                 <div className="card">
                     <div className="screen-bar">
                         <div>
@@ -2803,6 +3065,7 @@
                     />
 
                 </div>
+                </>
             );
         };
 
@@ -2871,6 +3134,13 @@
             const [authLoading, setAuthLoading] = React.useState(false);
 
             React.useEffect(function() {
+                // Capture ?bill= param before auth redirect clears it
+                const params = new URLSearchParams(window.location.search);
+                const billParam = params.get('bill');
+                if (billParam) {
+                    window._pendingBillId = parseInt(billParam, 10);
+                    window.history.replaceState(null, '', window.location.pathname);
+                }
                 fetch('/api/client-config')
                     .then(function(r) { return r.json(); })
                     .then(function(data) {

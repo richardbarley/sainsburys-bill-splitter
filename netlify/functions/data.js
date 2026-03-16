@@ -53,13 +53,18 @@ exports.handler = async (event) => {
     const history = (historyRows || []).map((row) => ({
       id:          row.id,
       savedAt:     new Date(row.saved_at).getTime(),
-      updatedAt:   row.updated_at ? new Date(row.updated_at).getTime() : null,
-      items:       row.items,
-      assignments: row.assignments,
-      totals:      row.totals,
-      totalBill:   Number(row.total_bill),
-      receiptDate: row.receipt_date || '',
-      config:      row.config_snapshot,
+      updatedAt:      row.updated_at ? new Date(row.updated_at).getTime() : null,
+      items:          row.items,
+      assignments:    row.assignments,
+      totals:         row.totals,
+      totalBill:      Number(row.total_bill),
+      receiptDate:    row.receipt_date || '',
+      config:         row.config_snapshot,
+      assignedTo:     row.assigned_to || null,
+      assignedBy:     row.assigned_by || null,
+      assignedStatus: row.assigned_status || null,
+      completedBy:    row.completed_by || null,
+      completedAt:    row.completed_at ? new Date(row.completed_at).getTime() : null,
     }));
 
     return ok({ config, history });
@@ -92,6 +97,11 @@ exports.handler = async (event) => {
         config_snapshot: e.config || null,
         saved_at:        new Date(e.savedAt).toISOString(),
         updated_at:      e.updatedAt ? new Date(e.updatedAt).toISOString() : null,
+        assigned_to:     e.assignedTo || null,
+        assigned_by:     e.assignedBy || null,
+        assigned_status: e.assignedStatus || null,
+        completed_by:    e.completedBy || null,
+        completed_at:    e.completedAt ? new Date(e.completedAt).toISOString() : null,
       }));
       const { error } = await supabase.from('bill_history').upsert(rows);
       if (error) return err(500, error.message);

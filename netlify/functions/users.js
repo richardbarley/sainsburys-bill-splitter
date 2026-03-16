@@ -43,9 +43,8 @@ exports.handler = async (event) => {
 
   const isAdmin = caller.email === process.env.ADMIN_EMAIL;
 
-  // ── GET /api/users ─ list all users (admin only) ─────────────
+  // ── GET /api/users ─ list all authenticated users ────────────
   if (event.httpMethod === 'GET') {
-    if (!isAdmin) return fail(403, 'Forbidden');
     const { data: { users }, error } = await supabase.auth.admin.listUsers();
     if (error) return fail(500, error.message);
     const safe = users.map((u) => ({

@@ -21,7 +21,12 @@ create table if not exists bill_history (
   receipt_date    text,
   config_snapshot jsonb,
   saved_at        timestamptz not null default now(),
-  updated_at      timestamptz           -- last time assignments were changed
+  updated_at      timestamptz,          -- last time assignments were changed
+  assigned_to     text,                 -- email of assignee
+  assigned_by     text,                 -- email of person who assigned
+  assigned_status text,                 -- 'pending' | 'completed'
+  completed_by    text,
+  completed_at    timestamptz
 );
 
 -- Index for fast recency ordering
@@ -33,6 +38,14 @@ insert into config (id, people, groups)
 values (1, '{}', '[]')
 on conflict (id) do nothing;
 
--- ── Migration: add updated_at if upgrading from an older schema ─
--- Run this if the table already exists and just needs the new column:
--- alter table bill_history add column if not exists updated_at timestamptz;
+-- ── Migration: run these if upgrading from an older schema ──────
+alter table bill_history add column if not exists updated_at     timestamptz;
+alter table bill_history add column if not exists assigned_to    text;
+alter table bill_history add column if not exists assigned_by    text;
+alter table bill_history add column if not exists assigned_status text;
+alter table bill_history add column if not exists completed_by   text;
+alter table bill_history add column if not exists completed_at   timestamptz;
+
+-- Enable real-time for live notifications (run once in Supabase dashboard
+-- OR via: supabase realtime enable bill_history)
+-- In the Supabase dashboard: Database → Replication → bill_history → toggle on
