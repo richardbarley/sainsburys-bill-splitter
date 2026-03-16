@@ -283,7 +283,8 @@
             const [inviteStatus, setInviteStatus] = React.useState('');
             const [removeConfirm, setRemoveConfirm] = React.useState(null);
 
-            React.useEffect(function() {
+            const fetchUsers = function() {
+                setUsersLoading(true);
                 getAuthToken().then(function(token) {
                     if (!token) { setUsersLoading(false); return; }
                     fetch('/api/users', { headers: { 'Authorization': 'Bearer ' + token } })
@@ -291,7 +292,9 @@
                         .then(function(data) { setUserList(data.users || []); setUsersLoading(false); })
                         .catch(function() { setUsersLoading(false); });
                 });
-            }, []);
+            };
+
+            React.useEffect(function() { fetchUsers(); }, []);
 
             const sendInvite = function() {
                 if (!inviteEmail.trim()) return;
@@ -305,7 +308,7 @@
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (data.error) { setInviteStatus('error:' + data.error); }
-                        else { setInviteStatus('sent'); setInviteEmail(''); }
+                        else { setInviteStatus('sent'); setInviteEmail(''); fetchUsers(); }
                     })
                     .catch(function() { setInviteStatus('error:Network error'); });
                 });
@@ -364,11 +367,21 @@
                             return (
                                 <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: isMe ? '#fffbeb' : '#fafafa', borderRadius: '8px', border: '1px solid ' + (isMe ? '#fde68a' : '#e5e7eb') }}>
                                     <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: '14px', fontWeight: 600, color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {u.email}{isMe && <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', borderRadius: '4px', padding: '1px 5px', marginLeft: '6px' }}>you</span>}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                            <span style={{ fontSize: '14px', fontWeight: 600, color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>
+                                                {u.email}
+                                            </span>
+                                            {isMe && <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', borderRadius: '4px', padding: '1px 5px', flexShrink: 0 }}>you</span>}
+                                            {u.confirmed
+                                                ? <span style={{ fontSize: '11px', fontWeight: 700, color: '#15803d', background: '#dcfce7', borderRadius: '4px', padding: '1px 6px', flexShrink: 0 }}>Active</span>
+                                                : <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400e', background: '#fef3c7', borderRadius: '4px', padding: '1px 6px', flexShrink: 0 }}>Invited</span>
+                                            }
                                         </div>
-                                        <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
-                                            {u.confirmed ? 'Active' : 'Invite pending'} · joined {new Date(u.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '3px' }}>
+                                            {u.confirmed
+                                                ? 'Joined ' + new Date(u.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                                                : 'Invited ' + new Date(u.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                                            }
                                         </div>
                                     </div>
                                     {!isMe && (isConfirming ? (
