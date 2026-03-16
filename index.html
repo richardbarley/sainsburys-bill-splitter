@@ -402,7 +402,7 @@
             const [splitType, setSplitType] = useState('percentage');
             const [showSettings, setShowSettings] = useState(false);
             const [showUsers, setShowUsers] = useState(false);
-            const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
+            const [showUnassignedOnly, setShowUnassignedOnly] = useState(true);
             const [config, setConfig] = useState(loadConfig());
             const [editingPerson, setEditingPerson] = useState(null); // index being renamed
             const [editingGroup, setEditingGroup] = useState(null);   // index being renamed
@@ -2495,11 +2495,6 @@
                             </div>
                             <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
                                 <button
-                                    onClick={() => setShowUnassignedOnly(false)}
-                                    style={{ padding: '4px 12px', borderRadius: '6px', border: '1px solid', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: !showUnassignedOnly ? '#667eea' : 'white', color: !showUnassignedOnly ? 'white' : '#6b7280', borderColor: !showUnassignedOnly ? '#667eea' : '#e5e7eb' }}>
-                                    All items
-                                </button>
-                                <button
                                     onClick={() => {
                                         setShowUnassignedOnly(true);
                                         if (assignments[currentItemIndex]) {
@@ -2510,6 +2505,11 @@
                                     }}
                                     style={{ padding: '4px 12px', borderRadius: '6px', border: '1px solid', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: showUnassignedOnly ? '#667eea' : 'white', color: showUnassignedOnly ? 'white' : '#6b7280', borderColor: showUnassignedOnly ? '#667eea' : '#e5e7eb' }}>
                                     Unassigned only{unassignedCount > 0 ? ' (' + unassignedCount + ')' : ''}
+                                </button>
+                                <button
+                                    onClick={() => setShowUnassignedOnly(false)}
+                                    style={{ padding: '4px 12px', borderRadius: '6px', border: '1px solid', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: !showUnassignedOnly ? '#667eea' : 'white', color: !showUnassignedOnly ? 'white' : '#6b7280', borderColor: !showUnassignedOnly ? '#667eea' : '#e5e7eb' }}>
+                                    All items
                                 </button>
                             </div>
 
