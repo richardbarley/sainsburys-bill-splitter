@@ -1667,7 +1667,7 @@
             const currentQty = currentItem ? (parseFloat(currentItem.quantity) || 1) : 1;
             const totalQty = getTotalQuantity();
 
-            // Real-time: notify when an assigned bill is completed
+            // Real-time: sync any bill_history UPDATE into localStorage immediately
             useEffect(function() {
                 if (!_sb || !_user) return;
                 const channel = _sb.channel('bill-completions-' + (_user.id || 'user'))
@@ -1676,15 +1676,42 @@
                         schema: 'public',
                         table: 'bill_history'
                     }, function(payload) {
-                        if (payload.new.assigned_status === 'completed' &&
-                            payload.new.assigned_by === _user.email &&
-                            payload.new.completed_by !== _user.email) {
-                            const who = (payload.new.completed_by || 'Someone').split('@')[0];
-                            const when = payload.new.receipt_date || 'a receipt';
+                        const row = payload.new;
+                        if (!row) return;
+                        // Map DB row → app history entry
+                        const updated = {
+                            id:             row.id,
+                            savedAt:        new Date(row.saved_at).getTime(),
+                            updatedAt:      row.updated_at ? new Date(row.updated_at).getTime() : null,
+                            items:          row.items,
+                            assignments:    row.assignments,
+                            totals:         row.totals,
+                            totalBill:      Number(row.total_bill),
+                            receiptDate:    row.receipt_date || '',
+                            config:         row.config_snapshot,
+                            assignedTo:     row.assigned_to || null,
+                            assignedBy:     row.assigned_by || null,
+                            assignedStatus: row.assigned_status || null,
+                            completedBy:    row.completed_by || null,
+                            completedAt:    row.completed_at ? new Date(row.completed_at).getTime() : null,
+                        };
+                        // Write into localStorage
+                        try {
+                            const existing = getHistory();
+                            const idx = existing.findIndex(function(e) { return e.id === updated.id; });
+                            if (idx >= 0) { existing[idx] = updated; } else { existing.unshift(updated); }
+                            localStorage.setItem(HISTORY_KEY, JSON.stringify(existing));
+                        } catch(e) {}
+                        // Notify if someone completed a bill that was assigned by me
+                        if (row.assigned_status === 'completed' &&
+                            row.assigned_by === _user.email &&
+                            row.completed_by !== _user.email) {
+                            const who = (row.completed_by || 'Someone').split('@')[0];
+                            const when = row.receipt_date || 'a receipt';
                             setNotification({ message: who + ' has finished assigning the ' + when + ' receipt' });
-                            setHistoryVersion(function(v) { return v + 1; });
                             setTimeout(function() { setNotification(null); }, 8000);
                         }
+                        setHistoryVersion(function(v) { return v + 1; });
                     })
                     .subscribe();
                 return function() { _sb.removeChannel(channel); };
@@ -1904,6 +1931,19 @@
             if (showUsers) return <UserManagementScreen onClose={() => setShowUsers(false)} />;
 
             // ── History Screen ──────────────────────────────────────────
+            // Refresh from cloud whenever history screen is opened or historyVersion bumps
+            useEffect(function() {
+                if (!showHistory || !_user) return;
+                setHistoryLoading(true);
+                loadData().then(function(remote) {
+                    if (!remote) { setHistoryLoading(false); return; }
+                    const merged = mergeHistories(getHistory(), remote.history || []);
+                    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(merged)); } catch {}
+                    setHistoryVersion(function(v) { return v + 1; });
+                    setHistoryLoading(false);
+                }).catch(function() { setHistoryLoading(false); });
+            }, [showHistory]);
+
             if (showHistory) {
                 void historyVersion; // read to trigger re-render when history changes
                 const _rawBills = getHistory();
