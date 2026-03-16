@@ -12,14 +12,17 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
         #root { max-width: 1040px; margin: 0 auto; }
-        .card { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); padding: 32px; margin-bottom: 24px; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.13); padding: 28px; margin-bottom: 24px; }
+        .nano-btn { width: 32px; height: 32px; background: rgba(0,0,0,0.05); border: none; border-radius: 8px; font-size: 15px; cursor: pointer; flex-shrink: 0; transition: background 0.15s; }
+        .nano-btn:hover { background: rgba(0,0,0,0.1); }
         .title { font-size: 32px; font-weight: bold; color: #1f2937; margin-bottom: 8px; }
         .subtitle { color: #6b7280; margin-bottom: 24px; }
-        .upload-area { border: 3px dashed #d1d5db; border-radius: 12px; padding: 48px; text-align: center; cursor: pointer; transition: all 0.3s; background: #f9fafb; }
+        .upload-area { border: 2px dashed #d1d5db; border-radius: 12px; padding: 36px 24px; text-align: center; cursor: pointer; transition: all 0.3s; background: #f9fafb; }
         .upload-area:hover, .upload-area.drag-over { border-color: #667eea; background: #eef2ff; }
         .upload-icon { font-size: 48px; margin-bottom: 16px; }
         .upload-text { font-size: 18px; color: #4b5563; margin-bottom: 8px; }
@@ -27,7 +30,7 @@
         .progress-bar { width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin-bottom: 16px; }
         .progress-fill { height: 100%; background: linear-gradient(90deg, #f97316, #fb923c); transition: width 0.3s; }
         .progress-text { text-align: right; color: #6b7280; font-size: 14px; margin-bottom: 24px; }
-        .item-card { background: #fffbeb; border-radius: 12px; padding: 24px; margin-bottom: 24px; border-left: 4px solid #f59e0b; }
+        .item-card { background: #fffbeb; border-radius: 10px; padding: 14px 16px; margin-bottom: 24px; border-left: 3px solid #f59e0b; }
         .item-name { font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 8px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
         .item-details { display: flex; gap: 24px; color: #6b7280; font-size: 14px; margin-bottom: 20px; }
         .button { padding: 16px 24px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
@@ -87,11 +90,9 @@
         .assignment-title { font-size: 14px; font-weight: 600; color: #4338ca; margin-bottom: 8px; }
         .assignment-detail { font-size: 13px; color: #4338ca; line-height: 1.6; }
         .assignment-detail-row { display: flex; justify-content: space-between; padding: 4px 0; }
-        /* Settings & History floating buttons */
-        .settings-btn { position: fixed; top: 20px; right: 20px; background: #6b7280; color: white; border: none; border-radius: 50%; width: 52px; height: 52px; font-size: 22px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 999; transition: all 0.2s; }
-        .settings-btn:hover { background: #4b5563; transform: scale(1.05); }
-        .history-btn { position: fixed; top: 82px; right: 20px; background: #f59e0b; color: white; border: none; border-radius: 50%; width: 52px; height: 52px; font-size: 22px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 999; transition: all 0.2s; }
-        .history-btn:hover { background: #d97706; transform: scale(1.05); }
+        /* Screen title bar */
+        .screen-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .screen-bar-icons { display: flex; gap: 6px; flex-shrink: 0; }
         .cfg-table { width: 100%; border-collapse: collapse; font-size: 14px; }
         .cfg-table th { text-align: left; padding: 8px 10px; background: #f3f4f6; color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
         .cfg-table td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
@@ -164,8 +165,8 @@
             /* Larger touch targets for person pills */
             .quick-pill { padding: 12px 20px !important; font-size: 15px !important; }
         }
-        /* Safe area insets for iPhone notch/home bar */
-        body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+        /* Safe area insets for iPhone notch/home bar — never less than 16px */
+        body { padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
     </style>
 </head>
 <body>
@@ -181,42 +182,57 @@
             groups: [
                 { name: 'Adults', members: ['Richard', 'Lisa'] },
                 { name: 'Kids', members: ['Molly', 'Rosie', 'Stu', 'Joe'] }
-            ],
-            appKey: ''   // set in ⚙️ Settings — must match APP_SECRET_KEY in Netlify env
+            ]
         };
 
-        // ── Backend API (Netlify Function + Supabase) ─────────────────────
+        // ── Auth helpers ─────────────────────────────────────────────
+        let _sb = null;   // Supabase browser client (set by App on init)
+        let _user = null; // Current signed-in user (set by App on auth change)
+
+        const getAuthToken = function() {
+            if (!_sb) return Promise.resolve(null);
+            return _sb.auth.getSession().then(function(r) {
+                return (r.data.session && r.data.session.access_token) || null;
+            });
+        };
+
         const API_URL = '/api/data';
 
-        const loadData = function(appKey) {
-            return fetch(API_URL, {
-                headers: { 'X-App-Key': appKey }
-            }).then(function(res) {
-                if (!res.ok) return null;
-                return res.json();
-            }).catch(function() { return null; });
+        const loadData = function() {
+            return getAuthToken().then(function(token) {
+                if (!token) return null;
+                return fetch(API_URL, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                }).then(function(res) {
+                    if (!res.ok) return null;
+                    return res.json();
+                }).catch(function() { return null; });
+            });
         };
 
-        const saveData = function(appKey, cfg, history) {
-            // Strip appKey from config before uploading — it stays in localStorage only
-            const uploadCfg = {};
-            const keys = Object.keys(cfg);
-            for (let i = 0; i < keys.length; i++) {
-                if (keys[i] !== 'appKey') uploadCfg[keys[i]] = cfg[keys[i]];
-            }
-            return fetch(API_URL, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'X-App-Key': appKey },
-                body: JSON.stringify({ config: uploadCfg, history: history })
-            }).catch(function() {});
+        const saveData = function(cfg, hist) {
+            return getAuthToken().then(function(token) {
+                if (!token) return;
+                const uploadCfg = {};
+                const keys = Object.keys(cfg);
+                for (let i = 0; i < keys.length; i++) { uploadCfg[keys[i]] = cfg[keys[i]]; }
+                return fetch(API_URL, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ config: uploadCfg, history: hist })
+                }).catch(function() {});
+            });
         };
 
-        const deleteRemoteHistory = function(appKey, historyId) {
-            return fetch(API_URL, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json', 'X-App-Key': appKey },
-                body: JSON.stringify({ historyId: historyId })
-            }).catch(function() {});
+        const deleteRemoteHistory = function(historyId) {
+            return getAuthToken().then(function(token) {
+                if (!token) return;
+                return fetch(API_URL, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ historyId: historyId })
+                }).catch(function() {});
+            });
         };
 
         // Merge two history arrays by id, newest first, capped at 30 entries
@@ -252,8 +268,123 @@
             catch { return {}; }
         };
         const getHistory = () => {
-            try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+            try {
+                const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY));
+                return Array.isArray(parsed) ? parsed : [];
+            }
             catch { return []; }
+        };
+
+        // ── UserManagementScreen component ───────────────────────────────
+        const UserManagementScreen = function({ onClose }) {
+            const [userList, setUserList] = React.useState([]);
+            const [usersLoading, setUsersLoading] = React.useState(true);
+            const [inviteEmail, setInviteEmail] = React.useState('');
+            const [inviteStatus, setInviteStatus] = React.useState('');
+            const [removeConfirm, setRemoveConfirm] = React.useState(null);
+
+            React.useEffect(function() {
+                getAuthToken().then(function(token) {
+                    if (!token) { setUsersLoading(false); return; }
+                    fetch('/api/users', { headers: { 'Authorization': 'Bearer ' + token } })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) { setUserList(data.users || []); setUsersLoading(false); })
+                        .catch(function() { setUsersLoading(false); });
+                });
+            }, []);
+
+            const sendInvite = function() {
+                if (!inviteEmail.trim()) return;
+                setInviteStatus('sending');
+                getAuthToken().then(function(token) {
+                    fetch('/api/users', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                        body: JSON.stringify({ email: inviteEmail.trim() })
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.error) { setInviteStatus('error:' + data.error); }
+                        else { setInviteStatus('sent'); setInviteEmail(''); }
+                    })
+                    .catch(function() { setInviteStatus('error:Network error'); });
+                });
+            };
+
+            const removeUser = function(userId) {
+                getAuthToken().then(function(token) {
+                    fetch('/api/users', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                        body: JSON.stringify({ userId: userId })
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (!data.error) setUserList(function(prev) { return prev.filter(function(u) { return u.id !== userId; }); });
+                        setRemoveConfirm(null);
+                    })
+                    .catch(function() { setRemoveConfirm(null); });
+                });
+            };
+
+            return (
+                <div className="card">
+                    <div className="screen-bar" style={{ marginBottom: '4px' }}>
+                        <h1 className="title" style={{ fontSize: '22px', marginBottom: 0 }}>Manage Users</h1>
+                        <button className="nano-btn" onClick={onClose} title="Close" style={{ fontSize: '14px', fontWeight: 700 }}>✕</button>
+                    </div>
+                    <p className="subtitle" style={{ marginBottom: '20px' }}>Invite people to access this app. They'll receive an email with a sign-in link.</p>
+
+                    <div style={{ marginBottom: '24px', padding: '16px', background: '#f0fdf4', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: '#15803d', marginBottom: '10px' }}>Invite a new user</div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <input type="email" value={inviteEmail}
+                                onChange={function(e) { setInviteEmail(e.target.value); setInviteStatus(''); }}
+                                onKeyDown={function(e) { if (e.key === 'Enter') sendInvite(); }}
+                                placeholder="name@example.com"
+                                style={{ flex: 1, padding: '9px 12px', border: '1px solid #86efac', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+                            />
+                            <button onClick={sendInvite}
+                                disabled={inviteStatus === 'sending' || !inviteEmail.trim()}
+                                style={{ padding: '9px 16px', background: '#16a34a', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, color: 'white', cursor: 'pointer', opacity: (inviteStatus === 'sending' || !inviteEmail.trim()) ? 0.6 : 1 }}>
+                                {inviteStatus === 'sending' ? 'Sending…' : 'Invite'}
+                            </button>
+                        </div>
+                        {inviteStatus === 'sent' && <div style={{ marginTop: '8px', fontSize: '13px', color: '#15803d', fontWeight: 600 }}>✓ Invite sent!</div>}
+                        {inviteStatus.startsWith('error:') && <div style={{ marginTop: '8px', fontSize: '13px', color: '#dc2626' }}>✗ {inviteStatus.slice(6)}</div>}
+                    </div>
+
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>
+                        {usersLoading ? 'Loading…' : userList.length + ' user' + (userList.length !== 1 ? 's' : '')}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {userList.map(function(u) {
+                            const isMe = _user && u.email === _user.email;
+                            const isConfirming = removeConfirm === u.id;
+                            return (
+                                <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: isMe ? '#fffbeb' : '#fafafa', borderRadius: '8px', border: '1px solid ' + (isMe ? '#fde68a' : '#e5e7eb') }}>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: '14px', fontWeight: 600, color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {u.email}{isMe && <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', borderRadius: '4px', padding: '1px 5px', marginLeft: '6px' }}>you</span>}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
+                                            {u.confirmed ? 'Active' : 'Invite pending'} · joined {new Date(u.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        </div>
+                                    </div>
+                                    {!isMe && (isConfirming ? (
+                                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                                            <button onClick={function() { setRemoveConfirm(null); }} style={{ padding: '5px 10px', background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Cancel</button>
+                                            <button onClick={function() { removeUser(u.id); }} style={{ padding: '5px 10px', background: '#ef4444', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 700, color: 'white', cursor: 'pointer' }}>Remove</button>
+                                        </div>
+                                    ) : (
+                                        <button onClick={function() { setRemoveConfirm(u.id); }} style={{ background: 'none', border: 'none', color: '#d1d5db', fontSize: '16px', cursor: 'pointer', padding: '4px', flexShrink: 0 }} title="Remove user">✕</button>
+                                    ))}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
         };
 
         const BillSplitter = () => {
@@ -262,11 +393,7 @@
             const [assignments, setAssignments] = useState(() => getSavedSession().assignments || {});
             const [showSummary, setShowSummary] = useState(() => getSavedSession().showSummary || false);
             const [receiptDate, setReceiptDate] = useState(() => getSavedSession().receiptDate || '');
-            const [sharedBillBanner, setSharedBillBanner] = useState(''); // '' | 'review' | 'completed:Name'
-            const [collabMode, setCollabMode] = useState(false);
-            const [collabSharedBy, setCollabSharedBy] = useState('');
-            const [collabReturnerName, setCollabReturnerName] = useState('');
-            const [sendBackCopied, setSendBackCopied] = useState(false);
+            const [sessionId, setSessionId] = useState(() => getSavedSession().sessionId || null);
             const [cloudSyncStatus, setCloudSyncStatus] = useState(''); // '' | 'syncing' | 'synced' | 'error'
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState('');
@@ -274,6 +401,7 @@
             const [showCustomSplit, setShowCustomSplit] = useState(false);
             const [splitType, setSplitType] = useState('percentage');
             const [showSettings, setShowSettings] = useState(false);
+            const [showUsers, setShowUsers] = useState(false);
             const [config, setConfig] = useState(loadConfig());
             const [editingPerson, setEditingPerson] = useState(null); // index being renamed
             const [editingGroup, setEditingGroup] = useState(null);   // index being renamed
@@ -322,9 +450,9 @@
             const updateConfig = (newCfg) => {
                 setConfig(newCfg);
                 saveConfig(newCfg);
-                if (newCfg.appKey) {
+                if (_user) {
                     setCloudSyncStatus('syncing');
-                    saveData(newCfg.appKey, newCfg, getHistory())
+                    saveData(newCfg, getHistory())
                         .then(function() { setCloudSyncStatus('synced'); });
                 }
             };
@@ -427,66 +555,23 @@
                 if (items.length === 0) return;
                 try {
                     localStorage.setItem(SESSION_KEY, JSON.stringify({
-                        items, assignments, currentItemIndex, showSummary, receiptDate, savedAt: Date.now()
+                        items, assignments, currentItemIndex, showSummary, receiptDate, sessionId, savedAt: Date.now()
                     }));
                 } catch {}
             }, [items, assignments, currentItemIndex, showSummary]);
 
-            // On mount: check URL hash for a shared bill link or collab request
-            useEffect(() => {
-                const hash = window.location.hash;
-                if (hash.startsWith('#share=')) {
-                    try {
-                        const encoded = hash.slice(7);
-                        const json = decodeURIComponent(escape(atob(encoded)));
-                        const data = JSON.parse(json);
-                        if (data.items && data.items.length > 0) {
-                            setItems(data.items);
-                            setAssignments(data.assignments || {});
-                            setReceiptDate(data.receiptDate || '');
-                            setCurrentItemIndex(0);
-                            setShowSummary(true);
-                            setSharedBillBanner(data.completedBy ? 'completed:' + data.completedBy : 'review');
-                            window.history.replaceState(null, '', window.location.pathname);
-                        }
-                    } catch (e) { /* ignore malformed links */ }
-                } else if (hash.startsWith('#collab=')) {
-                    try {
-                        const encoded = hash.slice(8);
-                        const json = decodeURIComponent(escape(atob(encoded)));
-                        const data = JSON.parse(json);
-                        if (data.items && data.items.length > 0) {
-                            setItems(data.items);
-                            const asgns = data.assignments || {};
-                            setAssignments(asgns);
-                            setReceiptDate(data.receiptDate || '');
-                            // Jump to first unassigned item
-                            let firstUnassigned = 0;
-                            for (let i = 0; i < data.items.length; i++) {
-                                if (!asgns[i]) { firstUnassigned = i; break; }
-                            }
-                            setCurrentItemIndex(firstUnassigned);
-                            setShowSummary(false);
-                            setCollabMode(true);
-                            setCollabSharedBy(data.sharedBy || '');
-                            window.history.replaceState(null, '', window.location.pathname);
-                        }
-                    } catch (e) { /* ignore malformed links */ }
-                }
-            }, []);
-
             // On mount: pull from backend, merge history, apply config
             useEffect(() => {
-                if (!config.appKey) return;
+                if (!_user) return;
                 setCloudSyncStatus('syncing');
-                loadData(config.appKey).then(function(remote) {
+                loadData().then(function(remote) {
                     if (!remote) { setCloudSyncStatus('error'); return; }
                     // Merge histories
                     const merged = mergeHistories(getHistory(), remote.history || []);
                     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(merged)); } catch {}
-                    // Apply remote config (people, groups) but keep local appKey
+                    // Apply remote config (people, groups)
                     if (remote.config && (remote.config.people || remote.config.groups)) {
-                        const newCfg = Object.assign({}, remote.config, { appKey: config.appKey });
+                        const newCfg = Object.assign({}, remote.config);
                         setConfig(newCfg);
                         saveConfig(newCfg);
                     }
@@ -495,18 +580,14 @@
             }, []);
 
             const clearSession = () => {
-                if (Object.keys(assignments).length > 0) saveToHistory();
+                // Bill is already saved live in history — just clear the active session
                 try { localStorage.removeItem(SESSION_KEY); } catch {}
+                setSessionId(null);
                 setItems([]);
                 setAssignments({});
                 setCurrentItemIndex(0);
                 setShowSummary(false);
                 setReceiptDate('');
-                setSharedBillBanner('');
-                setCollabMode(false);
-                setCollabSharedBy('');
-                setCollabReturnerName('');
-                setSendBackCopied(false);
             };
 
             // ── Keyboard shortcuts ───────────────────────────────────────
@@ -686,6 +767,8 @@
                         return;
                     }
 
+                    const newSessionId = Date.now();
+                    setSessionId(newSessionId);
                     setItems(extractedItems);
                     setReceiptDate(extractReceiptDate(lines));
                     setCurrentItemIndex(0);
@@ -918,6 +1001,20 @@
                 assignItem({ type: 'individuals', people: [...quickSelectPeople] });
             };
 
+            // Accept a suggestion directly (from the tappable hint) and advance
+            const applySuggestion = (result) => {
+                if (!result) return;
+                const newAssignments = Object.assign({}, assignments, { [currentItemIndex]: result.assignment });
+                setAssignments(newAssignments);
+                setQuickSelectPeople([]);
+                setSelectedGroups(new Set());
+                if (currentItemIndex < items.length - 1) {
+                    setCurrentItemIndex(currentItemIndex + 1);
+                } else {
+                    setShowSummary(true);
+                }
+            };
+
             const calculateSummary = () => {
                 const totals = {};
                 config.people.forEach(p => { totals[p] = 0; });
@@ -1119,9 +1216,9 @@
                 setShowHistory(true);
                 setExpandedPerson(null);
                 setHistoryExpandedTab('items');
-                if (!config.appKey) return;
+                if (!_user) return;
                 setHistoryLoading(true);
-                loadData(config.appKey).then(function(remote) {
+                loadData().then(function(remote) {
                     setHistoryLoading(false);
                     if (!remote) return;
                     const merged = mergeHistories(getHistory(), remote.history || []);
@@ -1130,21 +1227,24 @@
                 });
             };
 
-            const pushToCloud = (history) => {
-                if (config.appKey) {
-                    setCloudSyncStatus('syncing');
-                    saveData(config.appKey, config, history)
-                        .then(function() { setCloudSyncStatus('synced'); });
-                }
+            const pushToCloud = (hist) => {
+                if (!_user) return;
+                setCloudSyncStatus('syncing');
+                saveData(config, hist)
+                    .then(function() { setCloudSyncStatus('synced'); });
             };
 
-            const saveToHistory = () => {
+            // Upsert the current bill into history by sessionId (insert or update in place)
+            const upsertHistory = (sid) => {
+                if (!sid || items.length === 0) return;
                 try {
                     const totals = calculateSummary();
                     const totalBill = Object.values(totals).reduce((s, v) => s + v, 0);
+                    const now = Date.now();
                     const entry = {
-                        id: Date.now(),
-                        savedAt: Date.now(),
+                        id: sid,
+                        savedAt: sid,        // creation time = session id timestamp
+                        updatedAt: now,
                         receiptDate: receiptDate || '',
                         items: [...items],
                         assignments: { ...assignments },
@@ -1153,12 +1253,27 @@
                         totalBill
                     };
                     const existing = getHistory();
-                    existing.unshift(entry);
-                    if (existing.length > 30) existing.pop();
+                    let idx = -1;
+                    for (let i = 0; i < existing.length; i++) {
+                        if (existing[i].id === sid) { idx = i; break; }
+                    }
+                    if (idx >= 0) {
+                        existing[idx] = entry;
+                    } else {
+                        existing.unshift(entry);
+                        if (existing.length > 30) existing.length = 30;
+                    }
                     localStorage.setItem(HISTORY_KEY, JSON.stringify(existing));
+                    setHistoryVersion(function(v) { return v + 1; });
                     pushToCloud(existing);
-                } catch {}
+                } catch(e) {}
             };
+
+            // Auto-save: upsert whenever assignments change (covers both upload and mid-session edits)
+            useEffect(function() {
+                if (!sessionId || items.length === 0) return;
+                upsertHistory(sessionId);
+            }, [assignments, sessionId]);
 
             const deleteHistoryEntry = (id) => {
                 try {
@@ -1166,12 +1281,26 @@
                     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
                     setDeletingHistoryId(null);
                     setHistoryVersion(v => v + 1);
-                    if (config.appKey) {
+                    if (_user) {
                         setCloudSyncStatus('syncing');
-                        deleteRemoteHistory(config.appKey, id)
+                        deleteRemoteHistory(id)
                             .then(function() { setCloudSyncStatus('synced'); });
                     }
                 } catch {}
+            };
+
+            // Load a history entry into the active session so the user can continue assigning
+            const loadBillForEditing = (entry) => {
+                const entryItems = entry.items || [];
+                if (entryItems.length === 0) return;
+                setSessionId(entry.id);
+                setItems(entryItems);
+                setAssignments(entry.assignments || {});
+                setReceiptDate(entry.receiptDate || '');
+                setCurrentItemIndex(0);
+                setShowSummary(false);
+                setShowHistory(false);
+                setReviewMode(false);
             };
 
             // ── Learning / suggestions ────────────────────────────────────
@@ -1409,9 +1538,35 @@
                 const unassigned = config.people.filter(p => !getPersonGroup(p));
                 return (
                     <div className="card">
-                        <button className="settings-btn" onClick={() => setShowSettings(false)} title="Close settings">✕</button>
-                        <h1 className="title" style={{fontSize:'24px'}}>Settings</h1>
+                        <div className="screen-bar" style={{ marginBottom: '4px' }}>
+                            <h1 className="title" style={{ fontSize: '22px', marginBottom: 0 }}>Settings</h1>
+                            <button className="nano-btn" onClick={() => setShowSettings(false)} title="Close settings" style={{ fontSize: '14px', fontWeight: 700 }}>✕</button>
+                        </div>
                         <p className="subtitle">Manage people and groups</p>
+
+                        {/* Account section */}
+                        <div style={{ marginBottom: '24px', padding: '14px 16px', background: '#f9fafb', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>Account</div>
+                            <div style={{ fontSize: '14px', color: '#374151', marginBottom: '10px' }}>
+                                <span style={{ color: '#9ca3af' }}>Signed in as </span>
+                                <strong>{_user ? _user.email : ''}</strong>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <button onClick={() => { setShowSettings(false); setShowUsers(true); }}
+                                    style={{ padding: '7px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', fontSize: '13px', fontWeight: 600, color: '#1d4ed8', cursor: 'pointer' }}>
+                                    👥 Manage users
+                                </button>
+                                <button onClick={() => { if (_sb) _sb.auth.signOut(); setShowSettings(false); }}
+                                    style={{ padding: '7px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '13px', fontWeight: 600, color: '#dc2626', cursor: 'pointer' }}>
+                                    Sign out
+                                </button>
+                            </div>
+                            {cloudSyncStatus && (
+                                <div style={{ marginTop: '10px', fontSize: '12px', color: cloudSyncStatus === 'synced' ? '#10b981' : cloudSyncStatus === 'error' ? '#ef4444' : '#f59e0b' }}>
+                                    {cloudSyncStatus === 'synced' ? '✓ Cloud synced' : cloudSyncStatus === 'error' ? '✗ Sync failed' : '⏳ Syncing…'}
+                                </div>
+                            )}
+                        </div>
 
                         {/* ── People ── */}
                         <div className="cfg-section-head">
@@ -1558,54 +1713,6 @@
                             </div>
                         )}
 
-                        {/* ── Cloud Sync ── */}
-                        <div className="cfg-section-head" style={{marginTop:'28px'}}>
-                            <span className="cfg-section-title">☁️ Cloud Sync</span>
-                        </div>
-                        <p style={{fontSize:'12px', color:'#6b7280', lineHeight:1.6, marginBottom:'12px'}}>
-                            Syncs people, groups and history across all your devices via the Netlify backend.
-                            Set <code style={{background:'#f3f4f6',padding:'1px 4px',borderRadius:'3px'}}>APP_SECRET_KEY</code> in your Netlify environment variables, then paste the same value here.
-                        </p>
-                        <table className="cfg-table">
-                            <tbody>
-                                <tr>
-                                    <td style={{width:'80px'}}><strong>App Key</strong></td>
-                                    <td>
-                                        <input
-                                            className="cfg-input"
-                                            type="password"
-                                            placeholder="your-secret-key"
-                                            value={config.appKey || ''}
-                                            onChange={e => {
-                                                const c = Object.assign({}, config, { appKey: e.target.value });
-                                                setConfig(c); saveConfig(c);
-                                            }}
-                                        />
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        {config.appKey && (
-                            <div style={{marginTop:'10px', display:'flex', gap:'10px', alignItems:'center'}}>
-                                <button className="cfg-btn" onClick={() => {
-                                    setCloudSyncStatus('syncing');
-                                    loadData(config.appKey).then(function(remote) {
-                                        if (!remote) { setCloudSyncStatus('error'); return; }
-                                        const merged = mergeHistories(getHistory(), remote.history || []);
-                                        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(merged)); } catch {}
-                                        if (remote.config && (remote.config.people || remote.config.groups)) {
-                                            const newCfg = Object.assign({}, remote.config, { appKey: config.appKey });
-                                            setConfig(newCfg); saveConfig(newCfg);
-                                        }
-                                        return saveData(config.appKey, config, merged);
-                                    }).then(function() { setCloudSyncStatus('synced'); });
-                                }}>↕ Sync now</button>
-                                <span style={{fontSize:'12px', color: cloudSyncStatus === 'synced' ? '#10b981' : cloudSyncStatus === 'error' ? '#ef4444' : cloudSyncStatus === 'syncing' ? '#f59e0b' : '#9ca3af'}}>
-                                    {cloudSyncStatus === 'synced' ? '✓ Synced' : cloudSyncStatus === 'error' ? '✗ Sync failed — check your App Key' : cloudSyncStatus === 'syncing' ? '⏳ Syncing…' : ''}
-                                </span>
-                            </div>
-                        )}
-
                         <button className="button button-primary" onClick={() => setShowSettings(false)} style={{marginTop:'24px', width:'100%'}}>
                             Done
                         </button>
@@ -1614,28 +1721,33 @@
             }
             // ────────────────────────────────────────────────────────────
 
+            // ── User Management Screen ───────────────────────────────────
+            if (showUsers) return <UserManagementScreen onClose={() => setShowUsers(false)} />;
+
             // ── History Screen ──────────────────────────────────────────
             if (showHistory) {
                 void historyVersion; // read to trigger re-render when history changes
-                const history = getHistory();
+                const _rawBills = getHistory();
+                const bills = Array.isArray(_rawBills) ? _rawBills : [];
                 return (
                     <div className="card">
-                        <button className="settings-btn" onClick={() => { setShowHistory(false); }} title="Close history">✕</button>
-
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', marginBottom: '4px' }}>
-                            <h1 className="title" style={{ marginBottom: 0 }}>Past Bills</h1>
-                            {historyLoading && <span style={{ fontSize: '12px', color: '#9ca3af' }}>syncing…</span>}
+                        <div className="screen-bar" style={{ marginBottom: '4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+                                <h1 className="title" style={{ fontSize: '22px', marginBottom: 0 }}>Past Bills</h1>
+                                {historyLoading && <span style={{ fontSize: '12px', color: '#9ca3af' }}>syncing…</span>}
+                            </div>
+                            <button className="nano-btn" onClick={() => setShowHistory(false)} title="Close" style={{ fontSize: '14px', fontWeight: 700 }}>✕</button>
                         </div>
-                        <p className="subtitle" style={{ marginBottom: '20px' }}>{history.length} saved bill{history.length !== 1 ? 's' : ''}</p>
+                        <p className="subtitle" style={{ marginBottom: '20px' }}>{bills.length} saved bill{bills.length !== 1 ? 's' : ''}</p>
 
-                        {history.length === 0 ? (
+                        {bills.length === 0 ? (
                             <div style={{ textAlign: 'center', color: '#9ca3af', padding: '40px 0', fontSize: '15px' }}>
                                 No bills saved yet.<br/>
-                                <span style={{ fontSize: '13px' }}>Bills are saved automatically when you start a new one.</span>
+                                <span style={{ fontSize: '13px' }}>Bills are saved automatically when you upload a receipt.</span>
                             </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                {history.map(function(entry) {
+                                {bills.map(function(entry) {
                                     const isExpanded = expandedPerson === entry.id;
                                     const isConfirming = deletingHistoryId === entry.id;
                                     // Prefer the actual receipt date; fall back to savedAt
@@ -1645,8 +1757,20 @@
                                     const savedStr = new Date(entry.savedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
                                     const showSavedSeparately = entry.receiptDate && entry.receiptDate !== savedStr;
 
+                                    const entryItems = entry.items || [];
+                                    const entryAssignments = entry.assignments || {};
+                                    const entryCfg = entry.config || { people: [], groups: [] };
+                                    const entryPeople = entryCfg.people || [];
+                                    const assignedCount = Object.keys(entryAssignments).length;
+                                    const totalCount = entryItems.length;
+                                    const fullyAssigned = totalCount > 0 && assignedCount >= totalCount;
+                                    const isActive = entry.id === sessionId;
+                                    const updatedStr = entry.updatedAt
+                                        ? new Date(entry.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                        : null;
+
                                     return (
-                                        <div key={entry.id} style={{ border: '1px solid ' + (isConfirming ? '#fca5a5' : '#e5e7eb'), borderRadius: '12px', overflow: 'hidden', transition: 'border-color 0.2s' }}>
+                                        <div key={entry.id} style={{ border: '1px solid ' + (isConfirming ? '#fca5a5' : isActive ? '#f59e0b' : '#e5e7eb'), borderRadius: '12px', overflow: 'hidden', transition: 'border-color 0.2s' }}>
                                             {/* Header row */}
                                             {isConfirming ? (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', background: '#fef2f2' }}>
@@ -1663,17 +1787,32 @@
                                                     </div>
                                                 </div>
                                             ) : (
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', background: isExpanded ? '#fffbeb' : 'white', cursor: 'pointer' }}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', background: isExpanded ? '#fffbeb' : (isActive ? '#fffdf5' : 'white'), cursor: 'pointer' }}
                                                 onClick={() => { setExpandedPerson(isExpanded ? null : entry.id); setHistoryExpandedTab('items'); }}>
-                                                <div style={{ flex: 1 }}>
-                                                    <div style={{ fontWeight: 700, color: '#1f2937', fontSize: '15px' }}>{displayDate}</div>
-                                                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
-                                                        {entry.items.length} items · {Object.keys(entry.assignments).length} assigned
-                                                        {showSavedSeparately && <span style={{ marginLeft: '6px', color: '#d1d5db' }}>· saved {savedStr}</span>}
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                        <span style={{ fontWeight: 700, color: '#1f2937', fontSize: '15px' }}>{displayDate}</span>
+                                                        {isActive && <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400e', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '4px', padding: '1px 6px' }}>IN PROGRESS</span>}
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                                        <span style={{
+                                                            fontSize: '11px', fontWeight: 600, borderRadius: '4px', padding: '2px 7px',
+                                                            background: fullyAssigned ? '#dcfce7' : '#fef9c3',
+                                                            color: fullyAssigned ? '#15803d' : '#854d0e',
+                                                            border: '1px solid ' + (fullyAssigned ? '#bbf7d0' : '#fde68a')
+                                                        }}>
+                                                            {fullyAssigned ? '✓ Fully assigned' : assignedCount + ' of ' + totalCount + ' assigned'}
+                                                        </span>
+                                                        {updatedStr && <span style={{ fontSize: '11px', color: '#9ca3af' }}>· updated {updatedStr}</span>}
                                                     </div>
                                                 </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
                                                     <span style={{ fontWeight: 700, color: '#92400e', fontSize: '18px' }}>£{(entry.totalBill || 0).toFixed(2)}</span>
+                                                    <button onClick={function(e) { e.stopPropagation(); loadBillForEditing(entry); }}
+                                                        style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', fontSize: '12px', fontWeight: 600, color: '#15803d', cursor: 'pointer', padding: '4px 10px', lineHeight: 1.4, flexShrink: 0 }}
+                                                        title="Load this bill and continue assigning">
+                                                        Continue →
+                                                    </button>
                                                     <button onClick={function(e) { e.stopPropagation(); setDeletingHistoryId(entry.id); }}
                                                         style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: '#d1d5db', padding: '4px', lineHeight: 1 }}
                                                         title="Delete this bill">🗑️</button>
@@ -1684,11 +1823,11 @@
 
                                             {/* Per-person totals strip (always visible) */}
                                             <div style={{ display: 'flex', flexWrap: 'wrap', borderTop: '1px solid #f3f4f6', background: '#fafafa' }}>
-                                                {entry.config.people.map(function(person, idx) {
+                                                {entryPeople.map(function(person, idx) {
                                                     return (
-                                                        <div key={person} style={{ flex: '1 0 calc(33% - 1px)', padding: '8px 14px', borderRight: (idx + 1) % 3 !== 0 ? '1px solid #f3f4f6' : 'none', borderBottom: idx < entry.config.people.length - 3 ? '1px solid #f3f4f6' : 'none' }}>
+                                                        <div key={person} style={{ flex: '1 0 calc(33% - 1px)', padding: '8px 14px', borderRight: (idx + 1) % 3 !== 0 ? '1px solid #f3f4f6' : 'none', borderBottom: idx < entryPeople.length - 3 ? '1px solid #f3f4f6' : 'none' }}>
                                                             <div style={{ fontSize: '11px', color: '#6b7280' }}>{person}</div>
-                                                            <div style={{ fontWeight: 700, color: '#1f2937', fontSize: '13px' }}>£{(entry.totals[person] || 0).toFixed(2)}</div>
+                                                            <div style={{ fontWeight: 700, color: '#1f2937', fontSize: '13px' }}>£{((entry.totals || {})[person] || 0).toFixed(2)}</div>
                                                         </div>
                                                     );
                                                 })}
@@ -1714,8 +1853,8 @@
                                                     {/* All Items tab */}
                                                     {historyExpandedTab === 'items' && (
                                                         <div style={{ maxHeight: '340px', overflowY: 'auto' }}>
-                                                            {entry.items.map(function(item, i) {
-                                                                const a = entry.assignments[i];
+                                                            {entryItems.map(function(item, i) {
+                                                                const a = entryAssignments[i];
                                                                 let who = 'Unassigned';
                                                                 if (a === 'Shared') who = 'Everyone';
                                                                 else if (typeof a === 'string') who = a;
@@ -1723,7 +1862,7 @@
                                                                 else if (a && a.type === 'custom') who = 'Custom split';
                                                                 else if (a && a.type === 'quantity') who = 'Qty split';
                                                                 return (
-                                                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', borderBottom: i < entry.items.length - 1 ? '1px solid #f9fafb' : 'none', fontSize: '13px' }}>
+                                                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', borderBottom: i < entryItems.length - 1 ? '1px solid #f9fafb' : 'none', fontSize: '13px' }}>
                                                                         <span style={{ color: '#1f2937', flex: 1, paddingRight: '8px' }}>{item.name}</span>
                                                                         <span style={{ color: '#9ca3af', fontSize: '11px', marginRight: '10px', whiteSpace: 'nowrap' }}>{who}</span>
                                                                         <span style={{ fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>£{item.price.toFixed(2)}</span>
@@ -1736,12 +1875,12 @@
                                                     {/* By Person tab */}
                                                     {historyExpandedTab === 'byPerson' && (function() {
                                                         const personBreakdown = buildHistoryBreakdown(entry);
-                                                        const people = entry.config.people || [];
+                                                        const people = entryPeople;
                                                         return (
                                                             <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
                                                                 {people.map(function(person) {
                                                                     const personItems = personBreakdown[person] || [];
-                                                                    const personTotal = entry.totals[person] || 0;
+                                                                    const personTotal = (entry.totals || {})[person] || 0;
                                                                     return (
                                                                         <div key={person} style={{ borderBottom: '1px solid #f3f4f6' }}>
                                                                             {/* Person header */}
@@ -1787,8 +1926,13 @@
             if (loading) {
                 return (
                     <div className="card">
-                        <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
-                        <button className="history-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
+                        <div className="screen-bar">
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Reading receipt…</span>
+                            <div className="screen-bar-icons">
+                                <button className="nano-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
+                                <button className="nano-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
+                            </div>
+                        </div>
                         <div className="loading">Loading PDF...</div>
                     </div>
                 );
@@ -1802,24 +1946,15 @@
 
                 return (
                     <div className="card">
-                        <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
-                        <button className="history-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
-
-                        {/* ── Shared bill / completed banner ── */}
-                        {sharedBillBanner && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: sharedBillBanner.startsWith('completed:') ? '#f0fdf4' : '#fffbeb', border: '2px solid ' + (sharedBillBanner.startsWith('completed:') ? '#86efac' : '#fcd34d'), borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: sharedBillBanner.startsWith('completed:') ? '#14532d' : '#92400e' }}>
-                                <span style={{ fontSize: '18px' }}>{sharedBillBanner.startsWith('completed:') ? '✅' : '👀'}</span>
-                                <div style={{ flex: 1 }}>
-                                    {sharedBillBanner.startsWith('completed:')
-                                        ? <><strong>Completed by {sharedBillBanner.slice(10)}</strong> — review the assignments below and adjust anything that needs changing.</>
-                                        : <><strong>Reviewing shared bill</strong> — assignments have been pre-filled. Tap any item to change its split.</>
-                                    }
-                                </div>
-                                <button onClick={() => setSharedBillBanner('')} style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', color: sharedBillBanner.startsWith('completed:') ? '#166534' : '#b45309', flexShrink: 0 }}>✕</button>
+                        <div className="screen-bar" style={{ marginBottom: '12px' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Summary</span>
+                            <div className="screen-bar-icons">
+                                <button className="nano-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
+                                <button className="nano-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
                             </div>
-                        )}
+                        </div>
 
-                        {/* ── Header row ── */}
+{/* ── Header row ── */}
                         <div className="summary-header">
                             <div>
                                 <h1 className="title" style={{ marginBottom: '4px' }}>Bill Summary</h1>
@@ -1930,74 +2065,13 @@
                         </div>
 
                         <div style={{ display: 'flex', gap: '10px' }}>
-                            <button
-                                onClick={() => { setShowShareModal(true); setHistoryCopied(false); setShareTab('person'); }}
-                                style={{ flex: 1, padding: '12px', background: '#eef2ff', border: '2px solid #c7d2fe', borderRadius: '10px', fontSize: '14px', fontWeight: 700, color: '#4338ca', cursor: 'pointer' }}
-                            >
-                                📤 Share summary
-                            </button>
                             <button className="button button-back" onClick={clearSession} style={{ flex: 1, margin: 0 }}>
                                 New Bill
                             </button>
                         </div>
 
-                        {/* ── Send Back section (collab mode only) ── */}
-                        {collabMode && (
-                            <div style={{ marginTop: '12px', background: '#eff6ff', border: '2px solid #93c5fd', borderRadius: '12px', padding: '14px 16px' }}>
-                                <div style={{ fontSize: '13px', fontWeight: 700, color: '#1e40af', marginBottom: '10px' }}>
-                                    📨 Send back to {collabSharedBy || 'the sender'}
-                                </div>
-                                <input
-                                    type="text"
-                                    placeholder="Your name (so they know who did this)"
-                                    value={collabReturnerName}
-                                    onChange={e => { setCollabReturnerName(e.target.value); setSendBackCopied(false); }}
-                                    style={{ width: '100%', border: '2px solid #bfdbfe', borderRadius: '8px', padding: '9px 12px', fontSize: '14px', outline: 'none', color: '#1e40af', marginBottom: '8px', boxSizing: 'border-box' }}
-                                />
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <button
-                                        onClick={() => {
-                                            try {
-                                                const returner = collabReturnerName.trim() || 'Someone';
-                                                const payload = JSON.stringify({ items: items, assignments: assignments, receiptDate: receiptDate, completedBy: returner });
-                                                const encoded = btoa(unescape(encodeURIComponent(payload)));
-                                                const url = window.location.origin + window.location.pathname + '#share=' + encoded;
-                                                const recipient = collabSharedBy || 'there';
-                                                const msg = 'Hi ' + recipient + '! I\'ve assigned the remaining items on the bill. Tap the link to review ✅';
-                                                if (navigator.share) {
-                                                    navigator.share({ text: msg, url: url });
-                                                } else if (navigator.clipboard) {
-                                                    navigator.clipboard.writeText(url).then(() => setSendBackCopied(true));
-                                                    setTimeout(() => setSendBackCopied(false), 2000);
-                                                }
-                                            } catch(e) {}
-                                        }}
-                                        style={{ padding: '12px', background: '#10b981', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, color: 'white', cursor: 'pointer' }}
-                                    >
-                                        📤 Share…
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            try {
-                                                const returner = collabReturnerName.trim() || 'Someone';
-                                                const payload = JSON.stringify({ items: items, assignments: assignments, receiptDate: receiptDate, completedBy: returner });
-                                                const encoded = btoa(unescape(encodeURIComponent(payload)));
-                                                const url = window.location.origin + window.location.pathname + '#share=' + encoded;
-                                                if (navigator.clipboard) {
-                                                    navigator.clipboard.writeText(url).then(() => { setSendBackCopied(true); setTimeout(() => setSendBackCopied(false), 2000); });
-                                                }
-                                            } catch(e) {}
-                                        }}
-                                        style={{ padding: '10px', background: 'white', border: '2px solid #bfdbfe', borderRadius: '10px', fontSize: '13px', fontWeight: 600, color: sendBackCopied ? '#10b981' : '#3b82f6', cursor: 'pointer', transition: 'color 0.2s' }}
-                                    >
-                                        {sendBackCopied ? '✓ Link copied!' : 'Copy link instead'}
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* ── Share modal overlay ── */}
-                        {showShareModal && (
+                        {/* ── Share modal overlay (removed) ── */}
+                        {false && (
                             <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '20px' }}
                                 onClick={() => setShowShareModal(false)}>
                                 <div style={{ background: 'white', borderRadius: '16px', padding: '20px', width: '100%', maxWidth: '560px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
@@ -2137,10 +2211,16 @@
                 if (showCustomSplit) {
                     return (
                         <div className="card">
-                            <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
-                            <button className="history-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
-                            <h2 className="title" style={{ fontSize: '24px' }}>Individual Split</h2>
-                            <p className="subtitle">{currentItem.name} · £{currentItem.price.toFixed(2)}</p>
+                            <div className="screen-bar">
+                                <div>
+                                    <h2 className="title" style={{ fontSize: '22px', marginBottom: '2px' }}>Advanced Split</h2>
+                                    <p className="subtitle" style={{ marginBottom: 0, fontSize: '13px' }}>{currentItem.name} · £{currentItem.price.toFixed(2)}</p>
+                                </div>
+                                <div className="screen-bar-icons">
+                                    <button className="nano-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
+                                    <button className="nano-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
+                                </div>
+                            </div>
 
                             <div className="split-type-toggle">
                                 <button
@@ -2387,30 +2467,19 @@
                 return (
                     <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
                     <div className="card" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                        <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
-                        <button className="history-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
-
                         {/* ── Fixed header: progress + banners (consistent height) ── */}
                         <div style={{ flexShrink: 0 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px', paddingRight: '60px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                                 <span style={{ fontSize: '13px', color: '#6b7280', fontWeight: 600 }}>Item {currentItemIndex + 1} of {items.length}</span>
-                                <span style={{ fontSize: '12px', color: '#9ca3af' }}>{progress.toFixed(0)}%</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>{progress.toFixed(0)}%</span>
+                                    <button className="nano-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
+                                    <button className="nano-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
+                                </div>
                             </div>
                             <div className="progress-bar" style={{ marginBottom: '16px' }}>
                                 <div className="progress-fill" style={{ width: `${progress}%` }}></div>
                             </div>
-
-                            {collabMode && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#eff6ff', border: '2px solid #93c5fd', borderRadius: '10px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#1e40af' }}>
-                                    <span style={{ fontSize: '18px' }}>📋</span>
-                                    <div>
-                                        {collabSharedBy
-                                            ? <><strong>{collabSharedBy}</strong> has shared this bill with you — assign remaining items, then use "Send back" on the summary.</>
-                                            : <>Someone has shared this bill with you — assign remaining items, then use "Send back" on the summary.</>
-                                        }
-                                    </div>
-                                </div>
-                            )}
 
                             {reviewMode && (
                                 <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '13px', color: '#92400e', fontWeight: 600 }}>
@@ -2430,16 +2499,29 @@
                             </div>
 
                             {(() => {
+                                if (assignments[currentItemIndex]) return null; // already assigned
                                 const result = getSuggestedAssignment(currentItem.name);
                                 if (!result) return null;
                                 const label = formatSuggestionLabel(result.assignment);
                                 if (!label) return null;
                                 const exact = result.score === 1.0;
                                 return (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', padding: '6px 12px', background: '#f3f4f6', borderRadius: '8px', fontSize: '13px', color: '#9ca3af' }}>
-                                        <span style={{ fontSize: '11px' }}>🔮</span>
-                                        <span>{exact ? 'Probably' : 'Maybe'}: <strong style={{ color: '#6b7280' }}>{label}</strong></span>
-                                    </div>
+                                    <button
+                                        onClick={() => applySuggestion(result)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+                                            padding: '9px 12px', marginBottom: '8px', cursor: 'pointer',
+                                            background: exact ? '#f0fdf4' : '#f8fafc',
+                                            border: '1px solid ' + (exact ? '#86efac' : '#e2e8f0'),
+                                            borderRadius: '8px', fontSize: '13px', textAlign: 'left'
+                                        }}
+                                    >
+                                        <span>🔮</span>
+                                        <span style={{ flex: 1, color: exact ? '#166534' : '#6b7280' }}>
+                                            <strong>{exact ? 'Probably' : 'Maybe'}:</strong> {label}
+                                        </span>
+                                        <span style={{ fontSize: '11px', color: exact ? '#16a34a' : '#9ca3af', fontWeight: 600 }}>Tap to accept →</span>
+                                    </button>
                                 );
                             })()}
 
@@ -2535,16 +2617,6 @@
                                 })}
                             </div>
 
-                            {/* Keyboard nav hint for pills */}
-                            <div style={{ fontSize: '10px', color: '#c4c9d4', marginBottom: '10px', display: 'flex', gap: '8px' }}>
-                                {[['← →', 'navigate'], ['space', 'toggle']].map(([key, label]) => (
-                                    <span key={key}>
-                                        <span style={{ fontFamily: 'monospace', background: 'rgba(0,0,0,0.06)', padding: '1px 4px', borderRadius: '3px' }}>{key}</span>
-                                        {' '}{label}
-                                    </span>
-                                ))}
-                            </div>
-
                             {/* Price preview + Assign button */}
                             {quickSelectPeople.length > 0 ? (
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: '10px', padding: '10px 14px' }}>
@@ -2562,20 +2634,28 @@
                                     </button>
                                 </div>
                             ) : (
-                                <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '13px', padding: '8px' }}>
-                                    Select people above, or use Advanced split below
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 4px' }}>
+                                    <span style={{ color: '#9ca3af', fontSize: '13px' }}>Select people above to assign</span>
+                                    <button
+                                        onClick={openCustomSplit}
+                                        style={{ background: 'none', border: 'none', color: '#8b5cf6', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                                    >
+                                        ⚙ Advanced →
+                                    </button>
                                 </div>
                             )}
 
-                            {/* Advanced split */}
-                            <div style={{ textAlign: 'right', marginTop: '10px' }}>
-                                <button
-                                    onClick={openCustomSplit}
-                                    style={{ background: 'none', border: 'none', color: '#8b5cf6', fontSize: '12px', fontWeight: 600, cursor: 'pointer', opacity: 0.85 }}
-                                >
-                                    ⚙ Advanced split (%, qty) →
-                                </button>
-                            </div>
+                            {/* Advanced split — also shown when selection IS made */}
+                            {quickSelectPeople.length > 0 && (
+                                <div style={{ textAlign: 'right', marginTop: '6px' }}>
+                                    <button
+                                        onClick={openCustomSplit}
+                                        style={{ background: 'none', border: 'none', color: '#8b5cf6', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                                    >
+                                        ⚙ Advanced split →
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
@@ -2612,26 +2692,23 @@
                             )}
                         </div>
 
-                        {!reviewMode && currentItemIndex < items.length - 1 && (
-                            <div style={{ textAlign: 'center', marginTop: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                            <button
+                                onClick={clearSession}
+                                style={{ background: 'none', border: 'none', color: '#d1d5db', fontSize: '12px', cursor: 'pointer' }}
+                                onMouseEnter={e => e.target.style.color = '#9ca3af'}
+                                onMouseLeave={e => e.target.style.color = '#d1d5db'}
+                            >
+                                New bill
+                            </button>
+                            {!reviewMode && currentItemIndex < items.length - 1 && (
                                 <button
                                     onClick={() => setShowSummary(true)}
                                     style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}
                                 >
                                     Jump to summary →
                                 </button>
-                            </div>
-                        )}
-
-                        <div style={{ textAlign: 'center', marginTop: '14px' }}>
-                            <button
-                                onClick={clearSession}
-                                style={{ background: 'none', border: 'none', color: '#d1d5db', fontSize: '12px', cursor: 'pointer', transition: 'color 0.2s' }}
-                                onMouseEnter={e => e.target.style.color = '#6b7280'}
-                                onMouseLeave={e => e.target.style.color = '#d1d5db'}
-                            >
-                                📄 Start a new bill
-                            </button>
+                            )}
                         </div>
                     </div>
                     <div className="running-totals-sidebar">
@@ -2661,15 +2738,22 @@
 
             return (
                 <div className="card">
-                    <button className="settings-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
-                    <button className="history-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
-                    <h1 className="title">Sainsbury's Bill Splitter</h1>
-                    <p className="subtitle">Upload your Sainsbury's receipt PDF to split the bill</p>
+                    <div className="screen-bar">
+                        <div>
+                            <h1 className="title" style={{ marginBottom: '4px' }}>Sainsbury's Bill Splitter</h1>
+                            <p className="subtitle" style={{ marginBottom: 0 }}>Upload your Sainsbury's receipt PDF to split the bill</p>
+                        </div>
+                        <div className="screen-bar-icons" style={{ paddingTop: '4px' }}>
+                            <button className="nano-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
+                            <button className="nano-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
+                        </div>
+                    </div>
 
                     {error && <div className="error">{error}</div>}
 
                     <div
                         className={`upload-area ${dragOver ? 'drag-over' : ''}`}
+                        style={{ marginTop: '16px' }}
                         onDrop={handleDrop}
                         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                         onDragLeave={() => setDragOver(false)}
@@ -2692,7 +2776,117 @@
             );
         };
 
-        ReactDOM.render(<BillSplitter />, document.getElementById('root'));
+        // ── LoginScreen ──────────────────────────────────────────────────
+        const LoginScreen = function({ onLogin, authError, authLoading }) {
+            const [email, setEmail] = React.useState('');
+            const [password, setPassword] = React.useState('');
+            const [resetSent, setResetSent] = React.useState(false);
+
+            const handleSubmit = function(e) {
+                e.preventDefault();
+                onLogin(email, password);
+            };
+
+            const handleReset = function() {
+                if (!email.trim() || !_sb) return;
+                _sb.auth.resetPasswordForEmail(email.trim())
+                    .then(function() { setResetSent(true); });
+            };
+
+            return (
+                <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', boxSizing: 'border-box' }}>
+                    <div className="card" style={{ width: '100%', maxWidth: '400px' }}>
+                        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+                            <div style={{ fontSize: '36px', marginBottom: '8px' }}>🛒</div>
+                            <h1 className="title" style={{ marginBottom: '4px' }}>Sainsbury's Bill Splitter</h1>
+                            <p className="subtitle" style={{ marginBottom: 0 }}>Sign in to continue</p>
+                        </div>
+                        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Email</label>
+                                <input type="email" value={email} onChange={function(e) { setEmail(e.target.value); }}
+                                    placeholder="you@example.com" required autoComplete="email"
+                                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Password</label>
+                                <input type="password" value={password} onChange={function(e) { setPassword(e.target.value); }}
+                                    placeholder="••••••••" required autoComplete="current-password"
+                                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
+                            </div>
+                            {authError && <div style={{ padding: '10px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '13px', color: '#dc2626' }}>{authError}</div>}
+                            <button type="submit" disabled={authLoading}
+                                style={{ padding: '12px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 700, color: 'white', cursor: 'pointer', opacity: authLoading ? 0.7 : 1, marginTop: '4px' }}>
+                                {authLoading ? 'Signing in…' : 'Sign in'}
+                            </button>
+                        </form>
+                        <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                            {resetSent ? (
+                                <span style={{ fontSize: '13px', color: '#10b981' }}>✓ Password reset email sent</span>
+                            ) : (
+                                <button onClick={handleReset} style={{ background: 'none', border: 'none', fontSize: '13px', color: '#9ca3af', cursor: 'pointer', textDecoration: 'underline' }}>
+                                    Forgot password?
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ── App wrapper — handles Supabase init + auth state ─────────────
+        const App = function() {
+            const [authState, setAuthState] = React.useState('loading');
+            const [authError, setAuthError] = React.useState('');
+            const [authLoading, setAuthLoading] = React.useState(false);
+
+            React.useEffect(function() {
+                fetch('/api/client-config')
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (!data.supabaseUrl || !data.supabaseAnonKey) {
+                            setAuthState('unauthenticated');
+                            return;
+                        }
+                        _sb = window.supabase.createClient(data.supabaseUrl, data.supabaseAnonKey);
+                        return _sb.auth.getSession().then(function(r) {
+                            const session = r.data.session;
+                            _user = session ? session.user : null;
+                            setAuthState(session ? 'authenticated' : 'unauthenticated');
+                            _sb.auth.onAuthStateChange(function(event, session) {
+                                _user = session ? session.user : null;
+                                setAuthState(session ? 'authenticated' : 'unauthenticated');
+                            });
+                        });
+                    })
+                    .catch(function() { setAuthState('unauthenticated'); });
+            }, []);
+
+            const handleLogin = function(email, password) {
+                if (!_sb) return;
+                setAuthLoading(true);
+                setAuthError('');
+                _sb.auth.signInWithPassword({ email: email, password: password })
+                    .then(function(r) {
+                        if (r.error) setAuthError(r.error.message);
+                        setAuthLoading(false);
+                    });
+            };
+
+            if (authState === 'loading') {
+                return (
+                    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '15px' }}>
+                        Loading…
+                    </div>
+                );
+            }
+            if (authState === 'unauthenticated') {
+                return <LoginScreen onLogin={handleLogin} authError={authError} authLoading={authLoading} />;
+            }
+            return <BillSplitter />;
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
 </html>

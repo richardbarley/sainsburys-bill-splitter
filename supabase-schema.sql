@@ -4,7 +4,6 @@
 -- ============================================================
 
 -- Household config (people, groups)
--- Single row for now; extend to multi-household by adding more rows later
 create table if not exists config (
   id          integer primary key default 1,
   people      text[]  not null default '{}',
@@ -12,7 +11,7 @@ create table if not exists config (
   updated_at  timestamptz not null default now()
 );
 
--- One bill per row makes history easy to query / extend
+-- One bill per row
 create table if not exists bill_history (
   id              bigint      primary key,   -- Date.now() from the client
   items           jsonb       not null,
@@ -21,7 +20,8 @@ create table if not exists bill_history (
   total_bill      numeric(10,2),
   receipt_date    text,
   config_snapshot jsonb,
-  saved_at        timestamptz not null default now()
+  saved_at        timestamptz not null default now(),
+  updated_at      timestamptz           -- last time assignments were changed
 );
 
 -- Index for fast recency ordering
@@ -32,3 +32,7 @@ create index if not exists bill_history_saved_at_idx
 insert into config (id, people, groups)
 values (1, '{}', '[]')
 on conflict (id) do nothing;
+
+-- ── Migration: add updated_at if upgrading from an older schema ─
+-- Run this if the table already exists and just needs the new column:
+-- alter table bill_history add column if not exists updated_at timestamptz;

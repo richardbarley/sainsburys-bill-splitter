@@ -1,21 +1,21 @@
 // netlify/functions/data.js
-// Handles all data operations for the bill splitter.
+// Handles all bill data operations for the bill splitter.
+// Authentication: Supabase JWT passed as  Authorization: Bearer <token>
 //
 // Required Netlify environment variables:
-//   SUPABASE_URL        — your project URL from Supabase dashboard
+//   SUPABASE_URL         — your project URL from Supabase dashboard
 //   SUPABASE_SERVICE_KEY — service role key (Settings > API)
-//   APP_SECRET_KEY      — any random string you choose; enter this in the app settings
 
 const { createClient } = require('@supabase/supabase-js');
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type, X-App-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
   'Content-Type': 'application/json',
 };
 
-const ok = (body) => ({ statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify(body) });
+const ok  = (body)       => ({ statusCode: 200, headers: CORS_HEADERS, body: JSON.stringify(body) });
 const err = (status, msg) => ({ statusCode: status, headers: CORS_HEADERS, body: JSON.stringify({ error: msg }) });
 
 exports.handler = async (event) => {
@@ -24,18 +24,21 @@ exports.handler = async (event) => {
     return { statusCode: 204, headers: CORS_HEADERS, body: '' };
   }
 
-  // Auth — check the X-App-Key header against the env variable
-  const appKey = event.headers['x-app-key'];
-  if (!process.env.APP_SECRET_KEY || appKey !== process.env.APP_SECRET_KEY) {
-    return err(401, 'Invalid or missing app key');
-  }
+  // Auth — validate the Supabase JWT
+  const authHeader = event.headers.authorization || event.headers.Authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return err(401, 'Missing Authorization header');
 
   const supabase = createClient(
     process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY
+    process.env.SUPABASE_SERVICE_KEY,
+    { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // ── GET /api/data ─────────────────────────────────────────
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+  if (authErr || !user) return err(401, 'Invalid or expired token');
+
+  // ── GET /api/data ─────────────────────────────────────────────
   // Returns { config: {...}, history: [...] }
   if (event.httpMethod === 'GET') {
     const [{ data: configRow }, { data: historyRows }] = await Promise.all([
@@ -48,30 +51,31 @@ exports.handler = async (event) => {
       : null;
 
     const history = (historyRows || []).map((row) => ({
-      id: row.id,
-      savedAt: new Date(row.saved_at).getTime(),
-      items: row.items,
+      id:          row.id,
+      savedAt:     new Date(row.saved_at).getTime(),
+      updatedAt:   row.updated_at ? new Date(row.updated_at).getTime() : null,
+      items:       row.items,
       assignments: row.assignments,
-      totals: row.totals,
-      totalBill: Number(row.total_bill),
+      totals:      row.totals,
+      totalBill:   Number(row.total_bill),
       receiptDate: row.receipt_date || '',
-      config: row.config_snapshot,
+      config:      row.config_snapshot,
     }));
 
     return ok({ config, history });
   }
 
-  // ── PUT /api/data ─────────────────────────────────────────
+  // ── PUT /api/data ─────────────────────────────────────────────
   // Body: { config?: {...}, history?: [...] }
-  // Upserts config and any provided history entries.
+  // Upserts config and/or history entries.
   if (event.httpMethod === 'PUT') {
     const body = JSON.parse(event.body || '{}');
 
     if (body.config) {
       const { error } = await supabase.from('config').upsert({
-        id: 1,
-        people: body.config.people || [],
-        groups: body.config.groups || [],
+        id:         1,
+        people:     body.config.people || [],
+        groups:     body.config.groups || [],
         updated_at: new Date().toISOString(),
       });
       if (error) return err(500, error.message);
@@ -79,14 +83,15 @@ exports.handler = async (event) => {
 
     if (Array.isArray(body.history) && body.history.length > 0) {
       const rows = body.history.map((e) => ({
-        id: e.id,
-        items: e.items,
-        assignments: e.assignments,
-        totals: e.totals,
-        total_bill: e.totalBill,
-        receipt_date: e.receiptDate || null,
+        id:              e.id,
+        items:           e.items,
+        assignments:     e.assignments,
+        totals:          e.totals,
+        total_bill:      e.totalBill,
+        receipt_date:    e.receiptDate || null,
         config_snapshot: e.config || null,
-        saved_at: new Date(e.savedAt).toISOString(),
+        saved_at:        new Date(e.savedAt).toISOString(),
+        updated_at:      e.updatedAt ? new Date(e.updatedAt).toISOString() : null,
       }));
       const { error } = await supabase.from('bill_history').upsert(rows);
       if (error) return err(500, error.message);
@@ -95,7 +100,7 @@ exports.handler = async (event) => {
     return ok({ ok: true });
   }
 
-  // ── DELETE /api/data ──────────────────────────────────────
+  // ── DELETE /api/data ──────────────────────────────────────────
   // Body: { historyId: number }
   if (event.httpMethod === 'DELETE') {
     const body = JSON.parse(event.body || '{}');
