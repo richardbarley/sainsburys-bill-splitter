@@ -1645,6 +1645,43 @@
             const currentQty = currentItem ? (parseFloat(currentItem.quantity) || 1) : 1;
             const totalQty = getTotalQuantity();
 
+            // Real-time: notify when an assigned bill is completed
+            useEffect(function() {
+                if (!_sb || !_user) return;
+                const channel = _sb.channel('bill-completions-' + (_user.id || 'user'))
+                    .on('postgres_changes', {
+                        event: 'UPDATE',
+                        schema: 'public',
+                        table: 'bill_history'
+                    }, function(payload) {
+                        if (payload.new.assigned_status === 'completed' &&
+                            payload.new.assigned_by === _user.email &&
+                            payload.new.completed_by !== _user.email) {
+                            const who = (payload.new.completed_by || 'Someone').split('@')[0];
+                            const when = payload.new.receipt_date || 'a receipt';
+                            setNotification({ message: who + ' has finished assigning the ' + when + ' receipt' });
+                            setHistoryVersion(function(v) { return v + 1; });
+                            setTimeout(function() { setNotification(null); }, 8000);
+                        }
+                    })
+                    .subscribe();
+                return function() { _sb.removeChannel(channel); };
+            }, []);
+
+            // Handle ?bill=<id> link: load the specific bill when history becomes available
+            useEffect(function() {
+                if (!window._pendingBillId) return;
+                const pendingId = window._pendingBillId;
+                const allBills = getHistory();
+                for (let i = 0; i < allBills.length; i++) {
+                    if (allBills[i].id === pendingId) {
+                        window._pendingBillId = null;
+                        loadBillForEditing(allBills[i], true);
+                        break;
+                    }
+                }
+            }, [historyVersion]);
+
             // ── Settings Screen ─────────────────────────────────────────
             if (showSettings) {
                 const unassigned = config.people.filter(p => !getPersonGroup(p));
@@ -1843,43 +1880,6 @@
 
             // ── User Management Screen ───────────────────────────────────
             if (showUsers) return <UserManagementScreen onClose={() => setShowUsers(false)} />;
-
-            // Real-time: notify when an assigned bill is completed
-            useEffect(function() {
-                if (!_sb || !_user) return;
-                const channel = _sb.channel('bill-completions-' + (_user.id || 'user'))
-                    .on('postgres_changes', {
-                        event: 'UPDATE',
-                        schema: 'public',
-                        table: 'bill_history'
-                    }, function(payload) {
-                        if (payload.new.assigned_status === 'completed' &&
-                            payload.new.assigned_by === _user.email &&
-                            payload.new.completed_by !== _user.email) {
-                            const who = (payload.new.completed_by || 'Someone').split('@')[0];
-                            const when = payload.new.receipt_date || 'a receipt';
-                            setNotification({ message: who + ' has finished assigning the ' + when + ' receipt' });
-                            setHistoryVersion(function(v) { return v + 1; });
-                            setTimeout(function() { setNotification(null); }, 8000);
-                        }
-                    })
-                    .subscribe();
-                return function() { _sb.removeChannel(channel); };
-            }, []);
-
-            // Handle ?bill=<id> link: load the specific bill when history becomes available
-            useEffect(function() {
-                if (!window._pendingBillId) return;
-                const pendingId = window._pendingBillId;
-                const allBills = getHistory();
-                for (let i = 0; i < allBills.length; i++) {
-                    if (allBills[i].id === pendingId) {
-                        window._pendingBillId = null;
-                        loadBillForEditing(allBills[i], true);
-                        break;
-                    }
-                }
-            }, [historyVersion]);
 
             // ── History Screen ──────────────────────────────────────────
             if (showHistory) {
