@@ -2520,8 +2520,8 @@
                             )}
                         </div>
 
-                        {/* ── Scrollable item info (name varies in length) ── */}
-                        <div style={{ overflowY: 'auto', maxHeight: '28vh', marginBottom: '12px', flexShrink: 0 }}>
+                        {/* ── Fixed-height item info — scrolls if name is very long ── */}
+                        <div style={{ overflowY: 'auto', height: '120px', marginBottom: '12px', flexShrink: 0 }}>
                             <div className="item-card" style={{ marginBottom: '8px' }}>
                                 <div className="item-name">{currentItem.name}</div>
                                 <div className="item-details">
