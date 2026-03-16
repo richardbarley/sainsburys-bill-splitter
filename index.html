@@ -1314,11 +1314,11 @@
                 } catch(e) {}
             };
 
-            // Auto-save: upsert whenever assignments change (covers both upload and mid-session edits)
+            // Auto-save: upsert whenever assignments or bill assignment status changes
             useEffect(function() {
                 if (!sessionId || items.length === 0) return;
                 upsertHistory(sessionId);
-            }, [assignments, sessionId]);
+            }, [assignments, sessionId, billAssignedTo, billAssignedStatus, billCompletedBy]);
 
             const deleteHistoryEntry = (id) => {
                 try {
