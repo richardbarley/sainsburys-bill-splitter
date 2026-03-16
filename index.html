@@ -402,6 +402,7 @@
             const [splitType, setSplitType] = useState('percentage');
             const [showSettings, setShowSettings] = useState(false);
             const [showUsers, setShowUsers] = useState(false);
+            const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
             const [config, setConfig] = useState(loadConfig());
             const [editingPerson, setEditingPerson] = useState(null); // index being renamed
             const [editingGroup, setEditingGroup] = useState(null);   // index being renamed
@@ -793,6 +794,20 @@
                 handleFileUpload(file);
             };
 
+            // Advance after an assignment — respects unassigned-only filter
+            const advanceToNext = (afterIndex, newAssignments) => {
+                if (showUnassignedOnly) {
+                    for (let i = afterIndex + 1; i < items.length; i++) {
+                        if (!newAssignments[i]) { setCurrentItemIndex(i); return; }
+                    }
+                    setShowSummary(true);
+                } else if (afterIndex < items.length - 1) {
+                    setCurrentItemIndex(afterIndex + 1);
+                } else {
+                    setShowSummary(true);
+                }
+            };
+
             const assignItem = (group) => {
                 const newAssignments = { ...assignments };
                 newAssignments[currentItemIndex] = group;
@@ -802,10 +817,8 @@
                 if (reviewMode) {
                     setReviewMode(false);
                     setShowSummary(true);
-                } else if (currentItemIndex < items.length - 1) {
-                    setCurrentItemIndex(currentItemIndex + 1);
                 } else {
-                    setShowSummary(true);
+                    advanceToNext(currentItemIndex, newAssignments);
                 }
             };
 
@@ -934,10 +947,8 @@
                 if (reviewMode) {
                     setReviewMode(false);
                     setShowSummary(true);
-                } else if (currentItemIndex < items.length - 1) {
-                    setCurrentItemIndex(currentItemIndex + 1);
                 } else {
-                    setShowSummary(true);
+                    advanceToNext(currentItemIndex, newAssignments);
                 }
             };
 
@@ -1008,11 +1019,7 @@
                 setAssignments(newAssignments);
                 setQuickSelectPeople([]);
                 setSelectedGroups(new Set());
-                if (currentItemIndex < items.length - 1) {
-                    setCurrentItemIndex(currentItemIndex + 1);
-                } else {
-                    setShowSummary(true);
-                }
+                advanceToNext(currentItemIndex, newAssignments);
             };
 
             const calculateSummary = () => {
@@ -2463,6 +2470,8 @@
 
                 const runningTotals = calculateSummary();
                 const runningTotal = Object.values(runningTotals).reduce((s, v) => s + v, 0);
+                const unassignedCount = items.filter((_, i) => !assignments[i]).length;
+                const overallProgress = items.length > 0 ? ((items.length - unassignedCount) / items.length) * 100 : 0;
 
                 return (
                     <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
@@ -2470,15 +2479,38 @@
                         {/* ── Fixed header: progress + banners (consistent height) ── */}
                         <div style={{ flexShrink: 0 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                <span style={{ fontSize: '13px', color: '#6b7280', fontWeight: 600 }}>Item {currentItemIndex + 1} of {items.length}</span>
+                                <span style={{ fontSize: '13px', color: '#6b7280', fontWeight: 600 }}>
+                                    {showUnassignedOnly
+                                        ? (unassignedCount + ' unassigned item' + (unassignedCount !== 1 ? 's' : '') + ' remaining')
+                                        : ('Item ' + (currentItemIndex + 1) + ' of ' + items.length)}
+                                </span>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>{progress.toFixed(0)}%</span>
+                                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>{overallProgress.toFixed(0)}%</span>
                                     <button className="nano-btn" onClick={openHistoryScreen} title="Past bills">📋</button>
                                     <button className="nano-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
                                 </div>
                             </div>
-                            <div className="progress-bar" style={{ marginBottom: '16px' }}>
-                                <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+                            <div className="progress-bar" style={{ marginBottom: '10px' }}>
+                                <div className="progress-fill" style={{ width: `${overallProgress}%` }}></div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+                                <button
+                                    onClick={() => setShowUnassignedOnly(false)}
+                                    style={{ padding: '4px 12px', borderRadius: '6px', border: '1px solid', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: !showUnassignedOnly ? '#667eea' : 'white', color: !showUnassignedOnly ? 'white' : '#6b7280', borderColor: !showUnassignedOnly ? '#667eea' : '#e5e7eb' }}>
+                                    All items
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowUnassignedOnly(true);
+                                        if (assignments[currentItemIndex]) {
+                                            for (let i = 0; i < items.length; i++) {
+                                                if (!assignments[i]) { setCurrentItemIndex(i); break; }
+                                            }
+                                        }
+                                    }}
+                                    style={{ padding: '4px 12px', borderRadius: '6px', border: '1px solid', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: showUnassignedOnly ? '#667eea' : 'white', color: showUnassignedOnly ? 'white' : '#6b7280', borderColor: showUnassignedOnly ? '#667eea' : '#e5e7eb' }}>
+                                    Unassigned only{unassignedCount > 0 ? ' (' + unassignedCount + ')' : ''}
+                                </button>
                             </div>
 
                             {reviewMode && (
@@ -2671,11 +2703,11 @@
                             {!reviewMode && (
                                 <button
                                     onClick={() => {
-                                        if (currentItemIndex < items.length - 1) {
-                                            setCurrentItemIndex(currentItemIndex + 1);
-                                        } else {
-                                            setShowSummary(true);
-                                        }
+                                        const next = showUnassignedOnly
+                                            ? (() => { for (let i = currentItemIndex + 1; i < items.length; i++) { if (!assignments[i]) return i; } return -1; })()
+                                            : (currentItemIndex < items.length - 1 ? currentItemIndex + 1 : -1);
+                                        if (next >= 0) setCurrentItemIndex(next);
+                                        else setShowSummary(true);
                                     }}
                                     style={{
                                         flex: 1, padding: '16px 24px', border: 'none',
@@ -2685,9 +2717,7 @@
                                         transition: 'all 0.2s'
                                     }}
                                 >
-                                    {currentItemIndex < items.length - 1
-                                        ? (currentAssignment ? 'Looks good ✓' : 'Skip →')
-                                        : (currentAssignment ? 'Done ✓' : 'Skip to summary →')}
+                                    {currentAssignment ? 'Next ✓' : 'Skip →'}
                                 </button>
                             )}
                         </div>
