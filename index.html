@@ -1384,9 +1384,9 @@
                 pushToCloud(existing);
                 const url = window.location.origin + window.location.pathname + '?bill=' + billEntry.id;
                 const label = billEntry.receiptDate || new Date(billEntry.savedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-                const text = 'Could you help me assign the items on the ' + label + ' Sainsbury\'s receipt?';
+                const text = 'I\'ve shared the ' + label + ' Sainsbury\'s receipt with you on the bill splitter.';
                 if (navigator.share) {
-                    navigator.share({ title: 'Bill Assignment', text: text, url: url }).catch(function() {});
+                    navigator.share({ title: 'Shared Receipt', text: text, url: url }).catch(function() {});
                 } else {
                     navigator.clipboard.writeText(text + ' ' + url).catch(function() {});
                 }
@@ -1708,7 +1708,7 @@
                             row.completed_by !== _user.email) {
                             const who = (row.completed_by || 'Someone').split('@')[0];
                             const when = row.receipt_date || 'a receipt';
-                            setNotification({ message: who + ' has finished assigning the ' + when + ' receipt' });
+                            setNotification({ message: who + ' has finished the ' + when + ' receipt' });
                             setTimeout(function() { setNotification(null); }, 8000);
                         }
                         setHistoryVersion(function(v) { return v + 1; });
@@ -2039,7 +2039,7 @@
                                                             }}>
                                                                 {entry.assignedStatus === 'completed'
                                                                     ? '✅ Done by ' + (entry.completedBy || entry.assignedTo).split('@')[0]
-                                                                    : '⏳ Assigned to ' + entry.assignedTo.split('@')[0]}
+                                                                    : '⏳ Shared with ' + entry.assignedTo.split('@')[0]}
                                                             </span>
                                                         )}
                                                     </div>
@@ -2048,12 +2048,12 @@
                                                     <span style={{ fontWeight: 700, color: '#92400e', fontSize: '18px' }}>£{(entry.totalBill || 0).toFixed(2)}</span>
                                                     <button onClick={function(e) { e.stopPropagation(); fetchAppUsers(); setShowAssignModal(isExpanded && showAssignModal === entry.id ? null : entry.id); }}
                                                         style={{ background: showAssignModal === entry.id ? '#1d4ed8' : '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', fontSize: '12px', fontWeight: 600, color: showAssignModal === entry.id ? 'white' : '#1d4ed8', cursor: 'pointer', padding: '4px 10px', lineHeight: 1.4, flexShrink: 0 }}
-                                                        title="Assign to another user">
-                                                        Assign
+                                                        title="Share with another user">
+                                                        Share
                                                     </button>
                                                     <button onClick={function(e) { e.stopPropagation(); loadBillForEditing(entry); }}
                                                         style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', fontSize: '12px', fontWeight: 600, color: '#15803d', cursor: 'pointer', padding: '4px 10px', lineHeight: 1.4, flexShrink: 0 }}
-                                                        title="Load this bill and continue assigning">
+                                                        title="Load this bill and continue">
                                                         Continue →
                                                     </button>
                                                     <button onClick={function(e) { e.stopPropagation(); setDeletingHistoryId(entry.id); }}
@@ -2064,10 +2064,10 @@
                                             </div>
                                             )}
 
-                                            {/* Assign user picker */}
+                                            {/* Share user picker */}
                                             {showAssignModal === entry.id && (
                                                 <div style={{ padding: '12px 16px', borderTop: '1px solid #e5e7eb', background: '#f0f9ff' }}>
-                                                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#1d4ed8', marginBottom: '8px' }}>Assign to:</div>
+                                                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#1d4ed8', marginBottom: '8px' }}>Share with:</div>
                                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
                                                         {appUsers
                                                             .filter(function(u) { return !_user || u.email !== _user.email; })
@@ -2082,7 +2082,7 @@
                                                             })
                                                         }
                                                         {appUsers.filter(function(u) { return !_user || u.email !== _user.email; }).length === 0 && (
-                                                            <span style={{ fontSize: '13px', color: '#9ca3af' }}>No other users yet — invite someone in Settings → Manage Users</span>
+                                                            <span style={{ fontSize: '13px', color: '#9ca3af' }}>No other users yet — add someone in Settings → Manage Users</span>
                                                         )}
                                                     </div>
                                                     <button onClick={function() { setShowAssignModal(null); }}
@@ -2254,6 +2254,13 @@
                                 <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#7c2d12' }}>£{totalBill.toFixed(2)}</div>
                             </div>
                         </div>
+
+                        {isAssigneeMode && (
+                            <button onClick={markBillComplete}
+                                style={{ display: 'block', width: '100%', padding: '16px', background: '#16a34a', border: 'none', borderRadius: '12px', fontSize: '17px', fontWeight: 700, color: 'white', cursor: 'pointer', marginBottom: '16px', boxShadow: '0 4px 16px rgba(22,163,74,0.35)' }}>
+                                ✅ Mark as complete
+                            </button>
+                        )}
 
                         {unassignedCount > 0 && (
                             <button
@@ -2816,13 +2823,13 @@
                             )}
 
                             {isAssigneeMode && (
-                                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px' }}>
-                                    <div style={{ fontSize: '13px', color: '#1d4ed8', fontWeight: 600, marginBottom: unassignedCount === 0 ? '10px' : '0' }}>
-                                        📋 {billAssignedBy ? billAssignedBy.split('@')[0] + ' has asked you to assign this receipt' : 'You\'ve been asked to assign this receipt'}
+                                <div style={{ marginBottom: '12px' }}>
+                                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 14px', marginBottom: unassignedCount === 0 ? '10px' : '0', fontSize: '13px', color: '#1d4ed8', fontWeight: 600 }}>
+                                        📋 {billAssignedBy ? billAssignedBy.split('@')[0] + ' has shared this receipt with you' : 'This receipt has been shared with you'}
                                     </div>
                                     {unassignedCount === 0 && (
                                         <button onClick={markBillComplete}
-                                            style={{ padding: '8px 18px', background: '#16a34a', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, color: 'white', cursor: 'pointer', marginTop: '2px' }}>
+                                            style={{ width: '100%', padding: '14px', background: '#16a34a', border: 'none', borderRadius: '10px', fontSize: '16px', fontWeight: 700, color: 'white', cursor: 'pointer', boxShadow: '0 4px 12px rgba(22,163,74,0.35)' }}>
                                             ✅ Mark as complete
                                         </button>
                                     )}
@@ -3047,12 +3054,6 @@
                                     style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}
                                 >
                                     Jump to summary →
-                                </button>
-                            )}
-                            {isAssigneeMode && (
-                                <button onClick={markBillComplete}
-                                    style={{ background: 'none', border: 'none', color: '#16a34a', fontSize: '12px', cursor: 'pointer', fontWeight: 700 }}>
-                                    ✅ Mark complete
                                 </button>
                             )}
                         </div>
