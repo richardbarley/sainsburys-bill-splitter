@@ -280,6 +280,7 @@
             const [userList, setUserList] = React.useState([]);
             const [usersLoading, setUsersLoading] = React.useState(true);
             const [inviteEmail, setInviteEmail] = React.useState('');
+            const [invitePassword, setInvitePassword] = React.useState('');
             const [inviteStatus, setInviteStatus] = React.useState('');
             const [removeConfirm, setRemoveConfirm] = React.useState(null);
 
@@ -297,18 +298,18 @@
             React.useEffect(function() { fetchUsers(); }, []);
 
             const sendInvite = function() {
-                if (!inviteEmail.trim()) return;
+                if (!inviteEmail.trim() || !invitePassword.trim()) return;
                 setInviteStatus('sending');
                 getAuthToken().then(function(token) {
                     fetch('/api/users', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                        body: JSON.stringify({ email: inviteEmail.trim() })
+                        body: JSON.stringify({ email: inviteEmail.trim(), password: invitePassword.trim() })
                     })
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (data.error) { setInviteStatus('error:' + data.error); }
-                        else { setInviteStatus('sent'); setInviteEmail(''); fetchUsers(); }
+                        else { setInviteStatus('sent'); setInviteEmail(''); setInvitePassword(''); fetchUsers(); }
                     })
                     .catch(function() { setInviteStatus('error:Network error'); });
                 });
@@ -336,24 +337,32 @@
                         <h1 className="title" style={{ fontSize: '22px', marginBottom: 0 }}>Manage Users</h1>
                         <button className="nano-btn" onClick={onClose} title="Close" style={{ fontSize: '14px', fontWeight: 700 }}>✕</button>
                     </div>
-                    <p className="subtitle" style={{ marginBottom: '20px' }}>Invite people to access this app. They'll receive an email with a sign-in link.</p>
+                    <p className="subtitle" style={{ marginBottom: '20px' }}>Add a family member and set their password. Tell them their login details directly.</p>
 
                     <div style={{ marginBottom: '24px', padding: '16px', background: '#f0fdf4', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
-                        <div style={{ fontSize: '13px', fontWeight: 700, color: '#15803d', marginBottom: '10px' }}>Invite a new user</div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: '#15803d', marginBottom: '10px' }}>Add a new user</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <input type="email" value={inviteEmail}
                                 onChange={function(e) { setInviteEmail(e.target.value); setInviteStatus(''); }}
                                 onKeyDown={function(e) { if (e.key === 'Enter') sendInvite(); }}
-                                placeholder="name@example.com"
-                                style={{ flex: 1, padding: '9px 12px', border: '1px solid #86efac', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+                                placeholder="Email address"
+                                style={{ padding: '9px 12px', border: '1px solid #86efac', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
                             />
-                            <button onClick={sendInvite}
-                                disabled={inviteStatus === 'sending' || !inviteEmail.trim()}
-                                style={{ padding: '9px 16px', background: '#16a34a', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, color: 'white', cursor: 'pointer', opacity: (inviteStatus === 'sending' || !inviteEmail.trim()) ? 0.6 : 1 }}>
-                                {inviteStatus === 'sending' ? 'Sending…' : 'Invite'}
-                            </button>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <input type="text" value={invitePassword}
+                                    onChange={function(e) { setInvitePassword(e.target.value); setInviteStatus(''); }}
+                                    onKeyDown={function(e) { if (e.key === 'Enter') sendInvite(); }}
+                                    placeholder="Set a password"
+                                    style={{ flex: 1, padding: '9px 12px', border: '1px solid #86efac', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
+                                />
+                                <button onClick={sendInvite}
+                                    disabled={inviteStatus === 'sending' || !inviteEmail.trim() || !invitePassword.trim()}
+                                    style={{ padding: '9px 16px', background: '#16a34a', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, color: 'white', cursor: 'pointer', opacity: (inviteStatus === 'sending' || !inviteEmail.trim() || !invitePassword.trim()) ? 0.6 : 1 }}>
+                                    {inviteStatus === 'sending' ? 'Adding…' : 'Add'}
+                                </button>
+                            </div>
                         </div>
-                        {inviteStatus === 'sent' && <div style={{ marginTop: '8px', fontSize: '13px', color: '#15803d', fontWeight: 600 }}>✓ Invite sent!</div>}
+                        {inviteStatus === 'sent' && <div style={{ marginTop: '8px', fontSize: '13px', color: '#15803d', fontWeight: 600 }}>✓ User added!</div>}
                         {inviteStatus.startsWith('error:') && <div style={{ marginTop: '8px', fontSize: '13px', color: '#dc2626' }}>✗ {inviteStatus.slice(6)}</div>}
                     </div>
 

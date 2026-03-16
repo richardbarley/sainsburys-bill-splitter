@@ -57,13 +57,16 @@ exports.handler = async (event) => {
     return ok({ users: safe });
   }
 
-  // ── POST /api/users ─ invite a user by email (admin only) ────
+  // ── POST /api/users ─ create a user with password (admin only) ────
   if (event.httpMethod === 'POST') {
     if (!isAdmin) return fail(403, 'Forbidden');
     const body = JSON.parse(event.body || '{}');
     if (!body.email) return fail(400, 'email is required');
-    const { data, error } = await supabase.auth.admin.inviteUserByEmail(body.email, {
-      redirectTo: process.env.SITE_URL || undefined,
+    if (!body.password) return fail(400, 'password is required');
+    const { data, error } = await supabase.auth.admin.createUser({
+      email: body.email,
+      password: body.password,
+      email_confirm: true,
     });
     if (error) return fail(400, error.message);
     return ok({ success: true, userId: data.user?.id });
