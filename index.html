@@ -713,8 +713,10 @@ function BillCard({ bill, allNames, onClick }) {
 // BILL DETAIL SCREEN  (Items tab + Summary tab)
 // ════════════════════════════════════════════════════════════
 function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, completeBill, deleteBill, showToast }) {
-  const [itemIdx,  setItemIdx]  = useState(0);
-  const [view,     setView]     = useState('items'); // 'items' | 'summary'
+  const [itemIdx,       setItemIdx]       = useState(0);
+  const [view,          setView]          = useState('items'); // 'items' | 'summary'
+  const [summaryTab,    setSummaryTab]    = useState('person'); // 'person' | 'item'
+  const [expandedPerson, setExpandedPerson] = useState(null);
   const touchStartX = useRef(null);
 
   const allNames = useMemo(() => [
@@ -776,6 +778,8 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
       .filter((_, i) => !getAssignees(bill.assignments, i).length)
       .reduce((s, x) => s + x.price, 0);
 
+    function goToItemEdit(idx) { setItemIdx(idx); setView('items'); }
+
     return (
       <div style={{ display:'flex', flexDirection:'column', height:'100vh', height:'100dvh' }}>
         {/* Header */}
@@ -791,70 +795,141 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
           {isDone && <span className="badge badge-done">✓ Done</span>}
         </div>
 
+        {/* View switcher */}
+        <div style={{ display:'flex', borderBottom:'1px solid var(--border)', background:'white', flexShrink:0 }}>
+          {[['person','By Person'],['item','By Item']].map(([key, label]) => (
+            <button key={key} onClick={() => setSummaryTab(key)} style={{
+              flex:1, padding:'10px', border:'none', background:'none',
+              fontSize:13, fontWeight:600, cursor:'pointer',
+              color: summaryTab === key ? 'var(--primary)' : 'var(--muted)',
+              borderBottom: summaryTab === key ? '2px solid var(--primary)' : '2px solid transparent',
+            }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Scrollable content */}
         <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
-          {!Object.keys(totals).length
-            ? <div className="empty">
-                <div className="eicon">📊</div>
-                <h3>Nothing assigned yet</h3>
-                <p>Go back to Items to start assigning.</p>
-              </div>
-            : <>
-                {Object.entries(totals).sort((a, b) => b[1] - a[1]).map(([name, amount]) => {
-                  const c = colorFor(name, allNames);
-                  const personItems = bill.items.filter((_, i) => {
-                    const expanded = getAssignees(bill.assignments, i).flatMap(n => gmap[n] || [n]);
-                    return expanded.includes(name);
-                  });
-                  return (
-                    <div key={name}>
-                      <div className="sum-row">
-                        <div style={{ width:10, height:10, borderRadius:'50%', background:c.bd, flexShrink:0 }} />
-                        <span className="sum-name">{name}</span>
-                        <span className="sum-amount">£{amount.toFixed(2)}</span>
-                      </div>
-                      {personItems.length > 0 && (
-                        <div style={{ padding:'0 20px 10px', display:'flex', flexWrap:'wrap', gap:4 }}>
-                          {personItems.map((itm, j) => (
-                            <span key={j} style={{ fontSize:12, color:'var(--muted)', background:'#f8fafc', border:'1px solid var(--border)', borderRadius:6, padding:'2px 6px' }}>
-                              {itm.name}
-                            </span>
-                          ))}
+
+          {/* ── BY PERSON ── */}
+          {summaryTab === 'person' && (
+            !Object.keys(totals).length
+              ? <div className="empty">
+                  <div className="eicon">📊</div>
+                  <h3>Nothing assigned yet</h3>
+                  <p>Go back to Items to start assigning.</p>
+                </div>
+              : <>
+                  {Object.entries(totals).sort((a, b) => b[1] - a[1]).map(([name, amount]) => {
+                    const c          = colorFor(name, allNames);
+                    const isOpen     = expandedPerson === name;
+                    const personItems = bill.items.map((itm, i) => {
+                      const exp = getAssignees(bill.assignments, i).flatMap(n => gmap[n] || [n]);
+                      if (!exp.includes(name)) return null;
+                      return { itm, i, share: itm.price / exp.length };
+                    }).filter(Boolean);
+
+                    return (
+                      <div key={name} style={{ borderBottom:'1px solid var(--border)' }}>
+                        {/* Person header row */}
+                        <div
+                          onClick={() => setExpandedPerson(isOpen ? null : name)}
+                          style={{ display:'flex', alignItems:'center', gap:10, padding:'13px 20px', cursor:'pointer', background: isOpen ? '#f8fafc' : 'white' }}
+                        >
+                          <div style={{ width:10, height:10, borderRadius:'50%', background:c.bd, flexShrink:0 }} />
+                          <span style={{ flex:1, fontWeight:700, fontSize:15 }}>{name}</span>
+                          <span style={{ fontSize:16, fontWeight:800, color:'var(--primary)', marginRight:6 }}>£{amount.toFixed(2)}</span>
+                          <span style={{ color:'var(--muted)', fontSize:11, fontWeight:600 }}>{isOpen ? '▲' : '▼'}</span>
                         </div>
-                      )}
+
+                        {/* Expanded items list */}
+                        {isOpen && (
+                          <div style={{ background:'#f8fafc', borderTop:'1px solid var(--border)' }}>
+                            {personItems.map(({ itm, i, share }) => (
+                              <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 20px 9px 40px', borderBottom:'1px solid var(--border)' }}>
+                                <span style={{ flex:1, fontSize:13, lineHeight:1.3, color:'var(--text)' }}>{itm.name}</span>
+                                <span style={{ fontSize:13, color:'var(--muted)', marginRight:4, whiteSpace:'nowrap' }}>£{share.toFixed(2)}</span>
+                                {!isDone && (
+                                  <button onClick={() => goToItemEdit(i)}
+                                    style={{ border:'none', background:'none', color:'var(--primary)', cursor:'pointer', fontSize:15, padding:'2px 4px', lineHeight:1, opacity:.8 }}
+                                    title="Edit assignment">✎</button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {unassTotal > 0 && (
+                    <div style={{ display:'flex', alignItems:'center', gap:10, padding:'13px 20px', borderBottom:'1px solid var(--border)', opacity:.5 }}>
+                      <div style={{ width:10, height:10, borderRadius:'50%', background:'#94a3b8', flexShrink:0 }} />
+                      <span style={{ flex:1, fontWeight:700, fontSize:15, color:'var(--muted)' }}>Unassigned</span>
+                      <span style={{ fontSize:16, fontWeight:800, color:'var(--muted)' }}>£{unassTotal.toFixed(2)}</span>
                     </div>
-                  );
-                })}
+                  )}
 
-                {unassTotal > 0 && (
-                  <div className="sum-row" style={{ opacity:.55 }}>
-                    <div style={{ width:10, height:10, borderRadius:'50%', background:'#94a3b8', flexShrink:0 }} />
-                    <span className="sum-name" style={{ color:'var(--muted)' }}>Unassigned</span>
-                    <span className="sum-amount" style={{ color:'var(--muted)' }}>£{unassTotal.toFixed(2)}</span>
-                  </div>
-                )}
-
-                <div style={{ padding:'14px 20px', borderTop:'2px solid var(--border)' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:17 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:16, padding:'14px 20px', borderTop:'2px solid var(--border)' }}>
                     <span>Total</span><span>£{bill.totalBill.toFixed(2)}</span>
                   </div>
-                </div>
 
-                {isDone && (
-                  <div style={{ margin:'0 16px 16px', background:'var(--success-light)', borderRadius:10, padding:'12px 16px', fontSize:13, color:'var(--success)', fontWeight:600, textAlign:'center' }}>
-                    ✅ Completed {fmtDate(bill.completedAt)}{bill.completedBy && <> by {bill.completedBy.split('@')[0]}</>}
+                  {isDone && (
+                    <div style={{ margin:'12px 16px', background:'var(--success-light)', borderRadius:10, padding:'11px 16px', fontSize:13, color:'var(--success)', fontWeight:600, textAlign:'center' }}>
+                      ✅ Completed {fmtDate(bill.completedAt)}{bill.completedBy && <> by {bill.completedBy.split('@')[0]}</>}
+                    </div>
+                  )}
+
+                  <div style={{ textAlign:'center', padding:'8px 20px 24px' }}>
+                    <button className="btn btn-ghost" style={{ fontSize:13, color:'var(--danger)' }}
+                      onClick={async () => { if (confirm('Delete this receipt?')) await deleteBill(bill); }}>
+                      🗑 Delete receipt
+                    </button>
                   </div>
-                )}
+                </>
+          )}
 
-                {/* Delete */}
-                <div style={{ textAlign:'center', padding:'0 20px 24px' }}>
-                  <button className="btn btn-ghost" style={{ fontSize:13, color:'var(--danger)' }}
-                    onClick={async () => { if (confirm('Delete this receipt?')) await deleteBill(bill); }}>
-                    🗑 Delete receipt
-                  </button>
-                </div>
-              </>
-          }
+          {/* ── BY ITEM ── */}
+          {summaryTab === 'item' && (
+            <div>
+              {bill.items.map((itm, i) => {
+                const assigneeList = getAssignees(bill.assignments, i);
+                const isUnassigned = assigneeList.length === 0;
+                return (
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 20px', borderBottom:'1px solid var(--border)' }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:600, marginBottom:5, lineHeight:1.3 }}>{itm.name}</div>
+                      <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                        {isUnassigned
+                          ? <span style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>Unassigned</span>
+                          : assigneeList.map(a => {
+                              const c = colorFor(a, allNames);
+                              const isGroup = (gmap[a] || []).length > 0;
+                              return (
+                                <span key={a} style={{ fontSize:11, fontWeight:600, background:c.bg, color:c.fg, border:'1px solid '+c.bd, borderRadius:10, padding:'1px 7px', whiteSpace:'nowrap' }}>
+                                  {isGroup ? `👥 ${a}` : a}
+                                </span>
+                              );
+                            })
+                        }
+                      </div>
+                    </div>
+                    <div style={{ flexShrink:0, textAlign:'right' }}>
+                      <div style={{ fontSize:14, fontWeight:700, marginBottom:4 }}>£{itm.price.toFixed(2)}</div>
+                      {!isDone && (
+                        <button onClick={() => goToItemEdit(i)}
+                          style={{ border:'none', background:'none', color:'var(--primary)', cursor:'pointer', fontSize:12, fontWeight:600, padding:0 }}>
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
         </div>
 
         {/* Fixed bottom — Complete button */}
