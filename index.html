@@ -355,6 +355,7 @@ function rowToBill(row) {
 // ════════════════════════════════════════════════════════════
 function App() {
   const [ready,      setReady]      = useState(false);
+  const [initError,  setInitError]  = useState(null);
   const [user,       setUser]       = useState(null);
   const [config,     setConfig]     = useState({ people: [], groups: [] });
   const [bills,      setBills]      = useState([]);
@@ -369,17 +370,26 @@ function App() {
     toastRef.current = setTimeout(() => setToastMsg(null), ms);
   }
 
-  // Init Supabase
+  // Init Supabase — use a flat .then chain so ALL errors reach .catch
   useEffect(() => {
     initSb()
       .then(sb => {
-        sb.auth.getSession().then(({ data: { session } }) => {
+        // Set up auth listener first (synchronous)
+        sb.auth.onAuthStateChange((_, session) => {
           setUser(session?.user ?? null);
-          setReady(true);
         });
-        sb.auth.onAuthStateChange((_, session) => setUser(session?.user ?? null));
+        // Then get current session
+        return sb.auth.getSession();
       })
-      .catch(() => setReady(true));
+      .then(({ data: { session } }) => {
+        setUser(session?.user ?? null);
+        setReady(true);
+      })
+      .catch(err => {
+        console.error('Init failed:', err);
+        setInitError('Could not connect. Please check your internet and refresh.');
+        setReady(true);
+      });
   }, []);
 
   // Load data + subscribe when logged in
@@ -460,6 +470,17 @@ function App() {
     return (
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh' }}>
         <div className="spin" style={{ width:32, height:32 }} />
+      </div>
+    );
+  }
+
+  if (initError) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', padding:32, textAlign:'center' }}>
+        <div style={{ fontSize:40, marginBottom:16 }}>⚠️</div>
+        <h2 style={{ marginBottom:8 }}>Connection Error</h2>
+        <p style={{ color:'var(--muted)', fontSize:14, marginBottom:24, maxWidth:280, lineHeight:1.5 }}>{initError}</p>
+        <button className="btn btn-primary" onClick={() => window.location.reload()}>Retry</button>
       </div>
     );
   }
