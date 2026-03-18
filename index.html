@@ -827,7 +827,7 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                     const personItems = bill.items.map((itm, i) => {
                       const exp = getAssignees(bill.assignments, i).flatMap(n => gmap[n] || [n]);
                       if (!exp.includes(name)) return null;
-                      return { itm, i, share: itm.price / exp.length };
+                      return { itm, i, share: itm.price / exp.length, exp };
                     }).filter(Boolean);
 
                     return (
@@ -846,17 +846,34 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                         {/* Expanded items list */}
                         {isOpen && (
                           <div style={{ background:'#f8fafc', borderTop:'1px solid var(--border)' }}>
-                            {personItems.map(({ itm, i, share }) => (
-                              <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 20px 9px 40px', borderBottom:'1px solid var(--border)' }}>
-                                <span style={{ flex:1, fontSize:13, lineHeight:1.3, color:'var(--text)' }}>{itm.name}</span>
-                                <span style={{ fontSize:13, color:'var(--muted)', marginRight:4, whiteSpace:'nowrap' }}>£{share.toFixed(2)}</span>
-                                {!isDone && (
-                                  <button onClick={() => goToItemEdit(i)}
-                                    style={{ border:'none', background:'none', color:'var(--primary)', cursor:'pointer', fontSize:15, padding:'2px 4px', lineHeight:1, opacity:.8 }}
-                                    title="Edit assignment">✎</button>
-                                )}
-                              </div>
-                            ))}
+                            {personItems.map(({ itm, i, share, exp }) => {
+                              const others = exp.filter(n => n !== name);
+                              return (
+                                <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'9px 20px 9px 40px', borderBottom:'1px solid var(--border)' }}>
+                                  <div style={{ flex:1, minWidth:0 }}>
+                                    <div style={{ fontSize:13, lineHeight:1.3, color:'var(--text)' }}>{itm.name}</div>
+                                    {others.length > 0 && (
+                                      <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
+                                        shared with {others.length <= 2
+                                          ? others.join(' & ')
+                                          : `${others.slice(0, 2).join(', ')} +${others.length - 2}`
+                                        } · £{itm.price.toFixed(2)} ÷ {exp.length}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div style={{ flexShrink:0, textAlign:'right', paddingTop:1 }}>
+                                    <span style={{ fontSize:13, color: others.length > 0 ? 'var(--text)' : 'var(--muted)', fontWeight: others.length > 0 ? 600 : 400, whiteSpace:'nowrap' }}>
+                                      £{share.toFixed(2)}
+                                    </span>
+                                  </div>
+                                  {!isDone && (
+                                    <button onClick={() => goToItemEdit(i)}
+                                      style={{ border:'none', background:'none', color:'var(--primary)', cursor:'pointer', fontSize:15, padding:'2px 4px', lineHeight:1, opacity:.8, flexShrink:0, paddingTop:1 }}
+                                      title="Edit assignment">✎</button>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
