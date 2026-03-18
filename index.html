@@ -825,9 +825,10 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                     const c          = colorFor(name, allNames);
                     const isOpen     = expandedPerson === name;
                     const personItems = bill.items.map((itm, i) => {
-                      const exp = getAssignees(bill.assignments, i).flatMap(n => gmap[n] || [n]);
+                      const raw = getAssignees(bill.assignments, i);
+                      const exp = raw.flatMap(n => gmap[n] || [n]);
                       if (!exp.includes(name)) return null;
-                      return { itm, i, share: itm.price / exp.length, exp };
+                      return { itm, i, share: itm.price / exp.length, exp, raw };
                     }).filter(Boolean);
 
                     return (
@@ -846,8 +847,10 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                         {/* Expanded items list */}
                         {isOpen && (
                           <div style={{ background:'#f8fafc', borderTop:'1px solid var(--border)' }}>
-                            {personItems.map(({ itm, i, share, exp }) => {
-                              const others = exp.filter(n => n !== name);
+                            {personItems.map(({ itm, i, share, exp, raw }) => {
+                              // Use raw assignees for display so group names stay intact;
+                              // only strip the person's own name if they appear directly
+                              const others = raw.filter(n => n !== name);
                               return (
                                 <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'9px 20px 9px 40px', borderBottom:'1px solid var(--border)' }}>
                                   <div style={{ flex:1, minWidth:0 }}>
