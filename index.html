@@ -228,7 +228,8 @@ async function initSb() {
   if (_sb) return _sb;
   const r   = await fetch(`${API}/client-config`);
   const cfg = await r.json();
-  _sb = supabase.createClient(cfg.url, cfg.anonKey, {
+  if (!cfg.supabaseUrl) throw new Error(cfg.error || 'Missing supabaseUrl in config response');
+  _sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
     auth: { persistSession: true, autoRefreshToken: true },
   });
   return _sb;
