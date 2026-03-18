@@ -573,7 +573,7 @@ function LoginScreen() {
 // ════════════════════════════════════════════════════════════
 // BILLS LIST SCREEN
 // ════════════════════════════════════════════════════════════
-function BillsScreen({ bills, config, onOpenBill, onOpenSettings, onBillCreated, showToast }) {
+function BillsScreen({ bills, config, onOpenBill, onOpenSettings, onBillCreated, completeBill, showToast }) {
   const [uploading, setUploading] = useState(false);
   const [dragOver,  setDragOver]  = useState(false);
   const fileRef = useRef();
@@ -636,18 +636,44 @@ function BillsScreen({ bills, config, onOpenBill, onOpenSettings, onBillCreated,
             <h3>No receipts yet</h3>
             <p>Upload a Sainsbury's PDF receipt above to get started.</p>
           </div>
-        : <>
-            <div className="section-hdr">Receipts ({bills.length})</div>
-            {bills.map(bill => (
-              <BillCard key={bill.id} bill={bill} allNames={allNames} onClick={() => onOpenBill(bill)} />
-            ))}
-          </>
+        : (() => {
+            const active = bills.filter(b => !b.completedAt);
+            const done   = bills.filter(b =>  b.completedAt);
+            return <>
+              {active.length > 0 && <>
+                <div className="section-hdr">Active ({active.length})</div>
+                {active.map(bill => (
+                  <BillCard key={bill.id} bill={bill} allNames={allNames}
+                    onClick={() => onOpenBill(bill)}
+                    onComplete={() => completeBill(bill)} />
+                ))}
+              </>}
+
+              {done.length > 0 && <>
+                <div style={{
+                  display:'flex', alignItems:'center', gap:10,
+                  padding:'18px 20px 6px', color:'var(--muted)',
+                }}>
+                  <div style={{ flex:1, height:1, background:'var(--border)' }} />
+                  <span style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em' }}>
+                    Completed ({done.length})
+                  </span>
+                  <div style={{ flex:1, height:1, background:'var(--border)' }} />
+                </div>
+                {done.map(bill => (
+                  <BillCard key={bill.id} bill={bill} allNames={allNames}
+                    onClick={() => onOpenBill(bill)}
+                    muted />
+                ))}
+              </>}
+            </>;
+          })()
       }
     </div>
   );
 }
 
-function BillCard({ bill, allNames, onClick }) {
+function BillCard({ bill, allNames, onClick, onComplete, muted }) {
   const assigned  = countAssigned(bill.items, bill.assignments);
   const total     = bill.items.length;
   const pct       = total > 0 ? assigned / total : 0;
@@ -661,7 +687,9 @@ function BillCard({ bill, allNames, onClick }) {
       : <span className="badge badge-new">○ New</span>;
 
   return (
-    <div className="list-row" onClick={onClick} style={{ flexDirection:'column', gap:8, alignItems:'stretch' }}>
+    <div className="list-row" onClick={onClick}
+      style={{ flexDirection:'column', gap:8, alignItems:'stretch', opacity: muted ? 0.5 : 1 }}>
+
       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontSize:15, fontWeight:700, marginBottom:2 }}>
@@ -675,14 +703,22 @@ function BillCard({ bill, allNames, onClick }) {
         <span style={{ color:'var(--muted)', fontSize:16 }}>›</span>
       </div>
 
-      {total > 0 && (
+      {total > 0 && !isDone && (
         <div>
           <div className="prog-bar" style={{ marginBottom:4 }}>
-            <div className={'prog-fill' + (isDone ? ' done' : '')} style={{ width:(pct*100)+'%' }} />
+            <div className="prog-fill" style={{ width:(pct*100)+'%' }} />
           </div>
-          <div style={{ fontSize:12, color:'var(--muted)', display:'flex', justifyContent:'space-between' }}>
+          <div style={{ fontSize:12, color:'var(--muted)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <span>{assigned} of {total} assigned</span>
-            {isReady && <span style={{ color:'var(--success)', fontWeight:700 }}>Ready to complete →</span>}
+            {isReady && (
+              <button
+                className="btn btn-success"
+                style={{ fontSize:12, padding:'4px 10px', borderRadius:8 }}
+                onClick={e => { e.stopPropagation(); onComplete && onComplete(); }}
+              >
+                ✓ Mark Complete
+              </button>
+            )}
           </div>
         </div>
       )}
