@@ -694,21 +694,36 @@
             };
 
             const extractReceiptDate = (lines) => {
-                const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-                const monthPat = months.join('|');
-                const longRe = new RegExp('(\\d{1,2})\\s+(' + monthPat + ')\\s+(\\d{4})', 'i');
-                const shortRe = /(\d{1,2})\/(\d{1,2})\/(\d{4})/;
+                const fullMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                const shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                const allMonthPat = fullMonths.concat(shortMonths).join('|');
+                // "18 March 2026" or "18 Mar 2026"
+                const longRe = new RegExp('(\\d{1,2})\\s+(' + allMonthPat + ')\\s+(\\d{2,4})', 'i');
+                // "18/03/2026" or "18/03/26"
+                const slashRe = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/;
+                // "18-03-2026"
+                const dashRe = /(\d{1,2})-(\d{1,2})-(\d{4})/;
+
+                const fmt = (d) => isNaN(d) ? null : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
                     const m = line.match(longRe);
                     if (m) {
-                        const d = new Date(m[1] + ' ' + m[2] + ' ' + m[3]);
-                        if (!isNaN(d)) return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                        const year = m[3].length === 2 ? '20' + m[3] : m[3];
+                        const result = fmt(new Date(m[1] + ' ' + m[2] + ' ' + year));
+                        if (result) return result;
                     }
-                    const s = line.match(shortRe);
+                    const s = line.match(slashRe);
                     if (s) {
-                        const d = new Date(s[3] + '-' + s[2].padStart(2,'0') + '-' + s[1].padStart(2,'0'));
-                        if (!isNaN(d)) return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                        const year = s[3].length === 2 ? '20' + s[3] : s[3];
+                        const result = fmt(new Date(year + '-' + s[2].padStart(2,'0') + '-' + s[1].padStart(2,'0')));
+                        if (result) return result;
+                    }
+                    const dsh = line.match(dashRe);
+                    if (dsh) {
+                        const result = fmt(new Date(dsh[3] + '-' + dsh[2].padStart(2,'0') + '-' + dsh[1].padStart(2,'0')));
+                        if (result) return result;
                     }
                 }
                 return '';
