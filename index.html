@@ -711,9 +711,13 @@ function BillCard({ bill, allNames, onClick, onComplete, muted }) {
           <div style={{ fontSize:12, color:'var(--muted)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <span>{assigned} of {total} assigned</span>
             <button
-              className={'btn ' + (isReady ? 'btn-success' : 'btn-ghost')}
-              style={{ fontSize:12, padding:'4px 10px', borderRadius:8 }}
-              onClick={e => { e.stopPropagation(); onComplete && onComplete(); }}
+              className="btn btn-success"
+              style={{ fontSize:12, padding:'5px 12px', borderRadius:20, fontWeight:700, letterSpacing:'.01em' }}
+              onClick={e => {
+                e.stopPropagation();
+                if (!isReady && !confirm(`Only ${assigned} of ${total} items assigned. Mark as complete anyway?`)) return;
+                onComplete && onComplete();
+              }}
             >
               ✓ Complete
             </button>
