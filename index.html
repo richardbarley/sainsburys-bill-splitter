@@ -727,20 +727,14 @@ function BillCard({ bill, allNames, onClick, onComplete, muted }) {
 
       {/* Per-person mini totals */}
       {Object.entries(bill.totals || {}).filter(([,v]) => v > 0).length > 0 && (
-        <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:'4px 12px' }}>
           {Object.entries(bill.totals).filter(([,v]) => v > 0)
             .sort((a, b) => b[1] - a[1])
-            .map(([name, amount]) => {
-              const c = colorFor(name, allNames);
-              return (
-                <span key={name} style={{
-                  background:c.bg, border:'1px solid '+c.bd, color:c.fg,
-                  borderRadius:12, padding:'2px 8px', fontSize:12, fontWeight:700,
-                }}>
-                  {name} £{amount.toFixed(2)}
-                </span>
-              );
-            })}
+            .map(([name, amount]) => (
+              <span key={name} style={{ fontSize:12, color:'var(--muted)' }}>
+                {name} <strong style={{ color:'var(--text)', fontWeight:700 }}>£{amount.toFixed(2)}</strong>
+              </span>
+            ))}
         </div>
       )}
     </div>
