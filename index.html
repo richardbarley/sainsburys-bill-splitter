@@ -949,14 +949,31 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
               </div>
 
               {/* Chips — individuals first, then groups on their own row */}
+              {(() => {
+                // Build group → members map so we can light up individuals via group selection
+                const gmap = {};
+                (config.groups || []).forEach(g => { gmap[g.name] = g.members || []; });
+
+                // A person chip is "selected" if directly assigned OR they're in an assigned group
+                function personSelected(name) {
+                  if (assignees.includes(name)) return true;
+                  return assignees.some(a => (gmap[a] || []).includes(name));
+                }
+                // A person is "via group" (not directly) — show subtly differently
+                function personViaGroup(name) {
+                  return !assignees.includes(name) && assignees.some(a => (gmap[a] || []).includes(name));
+                }
+
+                return (
               <div style={{ width:'100%', maxWidth:360, marginBottom:20 }}>
 
                 {/* Individual people */}
                 {(config.people || []).length > 0 && (
                   <div style={{ display:'flex', flexWrap:'wrap', gap:10, justifyContent:'center', marginBottom: (config.groups || []).length > 0 ? 10 : 0 }}>
                     {(config.people || []).map(name => {
-                      const sel = assignees.includes(name);
-                      const c   = colorFor(name, allNames);
+                      const sel     = personSelected(name);
+                      const viaGrp  = personViaGroup(name);
+                      const c       = colorFor(name, allNames);
                       return (
                         <button key={name} disabled={isDone}
                           style={{
@@ -964,6 +981,7 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                             fontSize:16, fontWeight:700,
                             cursor: isDone ? 'default' : 'pointer',
                             transition:'all .12s', WebkitTapHighlightColor:'transparent',
+                            opacity: viaGrp ? 0.7 : 1,
                             ...(sel
                               ? { background:c.bg, borderColor:c.bd, color:c.fg }
                               : { background:'#f1f5f9', borderColor:'#e2e8f0', color:'#94a3b8' }
@@ -971,7 +989,7 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                           }}
                           onClick={() => toggle(name)}
                         >
-                          {name}
+                          {name}{viaGrp ? ' ·' : ''}
                         </button>
                       );
                     })}
@@ -1012,23 +1030,33 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                   </>
                 )}
               </div>
+                ); // end IIFE return
+              })()} {/* end IIFE */}
 
               {/* Assignment status line — fixed height so nothing shifts */}
-              <div style={{ height:24, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {assignees.length > 0
-                  ? <span style={{ fontSize:14, color:'var(--success)', fontWeight:600 }}>
-                      ✓ {assignees.join(' & ')}
-                      {assignees.length > 1 && (
-                        <span style={{ color:'var(--muted)', fontWeight:400 }}>
-                          {' '}· £{(item.price / assignees.length).toFixed(2)} each
+              {(() => {
+                const gmap2 = {};
+                (config.groups || []).forEach(g => { gmap2[g.name] = g.members || []; });
+                // Expand assignees to real people for cost-split display
+                const expanded = assignees.flatMap(a => gmap2[a]?.length ? gmap2[a] : [a]);
+                return (
+                  <div style={{ height:24, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    {assignees.length > 0
+                      ? <span style={{ fontSize:14, color:'var(--success)', fontWeight:600 }}>
+                          ✓ {assignees.join(' & ')}
+                          {expanded.length > 1 && (
+                            <span style={{ color:'var(--muted)', fontWeight:400 }}>
+                              {' '}· £{(item.price / expanded.length).toFixed(2)} each
+                            </span>
+                          )}
                         </span>
-                      )}
-                    </span>
-                  : <span style={{ fontSize:13, color:'var(--muted)' }}>
-                      {isDone ? '' : 'Tap a name to assign'}
-                    </span>
-                }
-              </div>
+                      : <span style={{ fontSize:13, color:'var(--muted)' }}>
+                          {isDone ? '' : 'Tap a name to assign'}
+                        </span>
+                    }
+                  </div>
+                );
+              })()}
             </>
         }
       </div>
