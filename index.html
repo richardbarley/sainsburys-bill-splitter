@@ -1104,7 +1104,9 @@ function SettingsScreen({ config, user, onBack, saveConfig, showToast }) {
 
 // ── People tab ────────────────────────────────────────────────
 function PeopleTab({ config, saveConfig, showToast }) {
-  const [newName, setNewName] = useState('');
+  const [newName,     setNewName]     = useState('');
+  const [editingName, setEditingName] = useState(null); // the name currently being edited
+  const [editValue,   setEditValue]   = useState('');
 
   async function add(e) {
     e.preventDefault();
@@ -1113,6 +1115,31 @@ function PeopleTab({ config, saveConfig, showToast }) {
     if (config.people.includes(n)) { showToast('Already exists'); return; }
     await saveConfig({ ...config, people: [...config.people, n] });
     setNewName('');
+  }
+
+  function startEdit(name) {
+    setEditingName(name);
+    setEditValue(name);
+  }
+
+  function cancelEdit() {
+    setEditingName(null);
+    setEditValue('');
+  }
+
+  async function saveEdit(oldName) {
+    const n = editValue.trim();
+    if (!n) { cancelEdit(); return; }
+    if (n === oldName) { cancelEdit(); return; }
+    if (config.people.includes(n)) { showToast('Name already exists'); return; }
+    // Rename in people list AND in any group members that reference the old name
+    const newPeople = config.people.map(p => p === oldName ? n : p);
+    const newGroups = (config.groups || []).map(g => ({
+      ...g,
+      members: g.members.map(m => m === oldName ? n : m),
+    }));
+    await saveConfig({ ...config, people: newPeople, groups: newGroups });
+    cancelEdit();
   }
 
   return (
@@ -1126,17 +1153,44 @@ function PeopleTab({ config, saveConfig, showToast }) {
       )}
 
       {config.people.map(name => {
-        const c = colorFor(name, config.people);
+        const c        = colorFor(name, config.people);
+        const isEditing = editingName === name;
         return (
           <div key={name} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid var(--border)' }}>
+            {/* Avatar */}
             <div style={{ width:34, height:34, borderRadius:'50%', flexShrink:0, background:c.bg, border:'2px solid '+c.bd, display:'flex', alignItems:'center', justifyContent:'center', color:c.fg, fontWeight:700, fontSize:14 }}>
-              {name[0].toUpperCase()}
+              {(isEditing ? editValue || name : name)[0].toUpperCase()}
             </div>
-            <span style={{ flex:1, fontWeight:600, fontSize:15 }}>{name}</span>
-            <button className="btn btn-ghost" style={{ padding:'4px 8px', color:'var(--danger)' }}
-              onClick={() => saveConfig({ ...config, people: config.people.filter(p => p !== name) })}>
-              ✕
-            </button>
+
+            {isEditing
+              /* Edit mode */
+              ? <form style={{ flex:1, display:'flex', gap:6 }}
+                  onSubmit={e => { e.preventDefault(); saveEdit(name); }}>
+                  <input
+                    className="input"
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    onKeyDown={e => e.key === 'Escape' && cancelEdit()}
+                    autoFocus
+                    style={{ flex:1, padding:'6px 10px', fontSize:14 }}
+                  />
+                  <button type="submit" className="btn btn-primary" style={{ padding:'6px 10px', fontSize:13 }}>Save</button>
+                  <button type="button" className="btn btn-ghost" style={{ padding:'6px 10px', fontSize:13 }} onClick={cancelEdit}>✕</button>
+                </form>
+
+              /* View mode */
+              : <>
+                  <span style={{ flex:1, fontWeight:600, fontSize:15 }}>{name}</span>
+                  <button className="btn btn-ghost" style={{ padding:'4px 8px', fontSize:13, color:'var(--primary)' }}
+                    onClick={() => startEdit(name)}>
+                    ✎
+                  </button>
+                  <button className="btn btn-ghost" style={{ padding:'4px 8px', color:'var(--danger)' }}
+                    onClick={() => saveConfig({ ...config, people: config.people.filter(p => p !== name) })}>
+                    ✕
+                  </button>
+                </>
+            }
           </div>
         );
       })}
@@ -1152,9 +1206,11 @@ function PeopleTab({ config, saveConfig, showToast }) {
 
 // ── Groups tab ────────────────────────────────────────────────
 function GroupsTab({ config, saveConfig, showToast }) {
-  const [newGroup,  setNewGroup]  = useState('');
-  const [expanded,  setExpanded]  = useState(null);
-  const [newMember, setNewMember] = useState('');
+  const [newGroup,    setNewGroup]    = useState('');
+  const [expanded,    setExpanded]    = useState(null);
+  const [newMember,   setNewMember]   = useState('');
+  const [editingGroup, setEditingGroup] = useState(null);
+  const [editGroupVal, setEditGroupVal] = useState('');
 
   async function addGroup(e) {
     e.preventDefault();
@@ -1168,6 +1224,27 @@ function GroupsTab({ config, saveConfig, showToast }) {
   async function removeGroup(name) {
     await saveConfig({ ...config, groups: (config.groups || []).filter(g => g.name !== name) });
     if (expanded === name) setExpanded(null);
+  }
+
+  function startEditGroup(name, e) {
+    e.stopPropagation();
+    setEditingGroup(name);
+    setEditGroupVal(name);
+  }
+
+  function cancelEditGroup() {
+    setEditingGroup(null);
+    setEditGroupVal('');
+  }
+
+  async function saveGroupRename(oldName) {
+    const n = editGroupVal.trim();
+    if (!n || n === oldName) { cancelEditGroup(); return; }
+    if ((config.groups || []).some(g => g.name === n)) { showToast('Name already exists'); return; }
+    const groups = (config.groups || []).map(g => g.name === oldName ? { ...g, name: n } : g);
+    await saveConfig({ ...config, groups });
+    if (expanded === oldName) setExpanded(n);
+    cancelEditGroup();
   }
 
   async function addMember(groupName, e) {
@@ -1203,21 +1280,46 @@ function GroupsTab({ config, saveConfig, showToast }) {
       {(config.groups || []).map(group => (
         <div key={group.name} style={{ marginBottom:8, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
           <div
-            style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px', cursor:'pointer', background: expanded === group.name ? '#f8fafc' : 'white' }}
-            onClick={() => setExpanded(expanded === group.name ? null : group.name)}
+            style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px', cursor: editingGroup === group.name ? 'default' : 'pointer', background: expanded === group.name ? '#f8fafc' : 'white' }}
+            onClick={() => editingGroup !== group.name && setExpanded(expanded === group.name ? null : group.name)}
           >
             <span style={{ fontSize:18 }}>👥</span>
-            <div style={{ flex:1 }}>
-              <div style={{ fontWeight:700, fontSize:14 }}>{group.name}</div>
-              <div style={{ fontSize:12, color:'var(--muted)' }}>
-                {group.members.length ? group.members.join(', ') : 'No members'}
-              </div>
-            </div>
-            <button className="btn btn-ghost" style={{ padding:'3px 8px', color:'var(--danger)', fontSize:12 }}
-              onClick={e => { e.stopPropagation(); removeGroup(group.name); }}>
-              Remove
-            </button>
-            <span style={{ color:'var(--muted)', fontSize:12 }}>{expanded === group.name ? '▲' : '▼'}</span>
+
+            {editingGroup === group.name
+              /* Rename mode */
+              ? <form style={{ flex:1, display:'flex', gap:6 }}
+                  onSubmit={e => { e.preventDefault(); saveGroupRename(group.name); }}>
+                  <input
+                    className="input"
+                    value={editGroupVal}
+                    onChange={e => setEditGroupVal(e.target.value)}
+                    onKeyDown={e => e.key === 'Escape' && cancelEditGroup()}
+                    autoFocus
+                    style={{ flex:1, padding:'5px 9px', fontSize:13 }}
+                  />
+                  <button type="submit" className="btn btn-primary" style={{ padding:'5px 10px', fontSize:12 }}>Save</button>
+                  <button type="button" className="btn btn-ghost" style={{ padding:'5px 10px', fontSize:12 }} onClick={e => { e.stopPropagation(); cancelEditGroup(); }}>✕</button>
+                </form>
+
+              /* View mode */
+              : <>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, fontSize:14 }}>{group.name}</div>
+                    <div style={{ fontSize:12, color:'var(--muted)' }}>
+                      {group.members.length ? group.members.join(', ') : 'No members'}
+                    </div>
+                  </div>
+                  <button className="btn btn-ghost" style={{ padding:'3px 8px', color:'var(--primary)', fontSize:12 }}
+                    onClick={e => startEditGroup(group.name, e)}>
+                    ✎
+                  </button>
+                  <button className="btn btn-ghost" style={{ padding:'3px 8px', color:'var(--danger)', fontSize:12 }}
+                    onClick={e => { e.stopPropagation(); removeGroup(group.name); }}>
+                    ✕
+                  </button>
+                  <span style={{ color:'var(--muted)', fontSize:12 }}>{expanded === group.name ? '▲' : '▼'}</span>
+                </>
+            }
           </div>
 
           {expanded === group.name && (
