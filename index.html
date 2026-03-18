@@ -476,6 +476,7 @@
             const [billCompletedBy, setBillCompletedBy] = useState(null);
             const [billCompletedAt, setBillCompletedAt] = useState(null);
             const [isAssigneeMode, setIsAssigneeMode] = useState(false);
+            const [showAssigneeIntro, setShowAssigneeIntro] = useState(false);
             const [showAssignModal, setShowAssignModal] = useState(null);
             const [notification, setNotification] = useState(null);
             const [appUsers, setAppUsers] = useState([]);
@@ -1353,6 +1354,7 @@
                 setBillCompletedBy(entry.completedBy || null);
                 setBillCompletedAt(entry.completedAt || null);
                 setIsAssigneeMode(assigneeMode === true);
+                setShowAssigneeIntro(assigneeMode === true);
             };
 
             const fetchAppUsers = () => {
@@ -1723,7 +1725,7 @@
                 const pendingId = window._pendingBillId;
                 const allBills = getHistory();
                 for (let i = 0; i < allBills.length; i++) {
-                    if (allBills[i].id === pendingId) {
+                    if (String(allBills[i].id) === String(pendingId)) {
                         window._pendingBillId = null;
                         loadBillForEditing(allBills[i], true);
                         break;
@@ -3076,6 +3078,44 @@
                 );
             }
 
+            // ── Assignee intro screen ─────────────────────────────────────
+            if (isAssigneeMode && showAssigneeIntro && items.length > 0) {
+                const introTotals = calculateSummary();
+                const introTotal = Object.values(introTotals).reduce(function(s, v) { return s + v; }, 0);
+                const unassignedItems = items.filter(function(_, i) { return !assignments[i]; });
+                return (
+                    <div className="card" style={{ maxWidth: '480px', margin: '0 auto' }}>
+                        <div style={{ textAlign: 'center', padding: '8px 0 16px' }}>
+                            <div style={{ fontSize: '44px', marginBottom: '12px' }}>🛒</div>
+                            <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#1f2937', marginBottom: '8px' }}>Receipt shared with you</h2>
+                            <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '24px', lineHeight: 1.5 }}>
+                                {billAssignedBy ? <strong>{billAssignedBy.split('@')[0]}</strong> : 'Someone'} has shared a Sainsbury's receipt and would like you to assign the items.
+                            </p>
+                            <div style={{ background: '#f9fafb', borderRadius: '12px', padding: '16px 20px', marginBottom: '24px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                {receiptDate && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                                        <span style={{ color: '#6b7280' }}>Receipt date</span>
+                                        <strong>{receiptDate}</strong>
+                                    </div>
+                                )}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                                    <span style={{ color: '#6b7280' }}>Items to assign</span>
+                                    <strong>{unassignedItems.length} of {items.length}</strong>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                                    <span style={{ color: '#6b7280' }}>Total bill</span>
+                                    <strong>£{introTotal.toFixed(2)}</strong>
+                                </div>
+                            </div>
+                            <button onClick={function() { setShowAssigneeIntro(false); }}
+                                style={{ width: '100%', padding: '16px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 700, color: 'white', cursor: 'pointer', boxShadow: '0 4px 16px rgba(102,126,234,0.4)' }}>
+                                Start assigning →
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
             return (
                 <>
                 {notification && (
@@ -3098,6 +3138,12 @@
 
                     {error && <div className="error">{error}</div>}
 
+                    {window._pendingBillId ? (
+                        <div style={{ textAlign: 'center', padding: '48px 24px', color: '#9ca3af', fontSize: '15px' }}>
+                            <div style={{ fontSize: '32px', marginBottom: '12px' }}>⏳</div>
+                            Loading shared receipt…
+                        </div>
+                    ) : (
                     <div
                         className={`upload-area ${dragOver ? 'drag-over' : ''}`}
                         style={{ marginTop: '16px' }}
@@ -3110,6 +3156,7 @@
                         <div className="upload-text">Drop your PDF here or click to browse</div>
                         <div className="upload-hint">Sainsbury's grocery receipt only</div>
                     </div>
+                    )}
 
                     <input
                         id="fileInput"
@@ -3193,7 +3240,7 @@
                 const params = new URLSearchParams(window.location.search);
                 const billParam = params.get('bill');
                 if (billParam) {
-                    window._pendingBillId = parseInt(billParam, 10);
+                    window._pendingBillId = billParam; // keep as string — bigint from DB comes back as string
                     window.history.replaceState(null, '', window.location.pathname);
                 }
                 fetch('/api/client-config')
