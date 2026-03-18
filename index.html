@@ -506,8 +506,14 @@ function LoginScreen() {
     e.preventDefault();
     if (!email || !password) return;
     setBusy(true); setErr('');
-    const { error } = await _sb.auth.signInWithPassword({ email, password });
-    if (error) { setErr(error.message); setBusy(false); }
+    try {
+      if (!_sb) await initSb();
+      const { error } = await _sb.auth.signInWithPassword({ email, password });
+      if (error) setErr(error.message);
+    } catch (ex) {
+      setErr('Connection error: ' + (ex.message || 'please try again'));
+    }
+    setBusy(false);
   }
 
   return (
