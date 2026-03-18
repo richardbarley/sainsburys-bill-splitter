@@ -611,7 +611,6 @@ function BillsScreen({ bills, config, onOpenBill, onOpenSettings, onBillCreated,
         <span style={{ fontSize:22 }}>🛒</span>
         <span className="header-title">Bill Splitter</span>
         <button className="btn btn-ghost btn-icon" onClick={onOpenSettings} title="Settings">⚙️</button>
-        <button className="btn btn-ghost btn-icon" onClick={() => _sb.auth.signOut()} title="Sign out">🚪</button>
       </div>
 
       <div
@@ -1126,6 +1125,15 @@ function SettingsScreen({ config, user, onBack, saveConfig, showToast }) {
       {tab === 'people' && <PeopleTab  config={config} saveConfig={saveConfig} showToast={showToast} />}
       {tab === 'groups' && <GroupsTab  config={config} saveConfig={saveConfig} showToast={showToast} />}
       {tab === 'users'  && <UsersTab   user={user} showToast={showToast} />}
+
+      <div style={{ textAlign:'center', padding:'24px 16px 32px' }}>
+        <button
+          onClick={() => _sb.auth.signOut()}
+          style={{ background:'none', border:'none', color:'var(--muted)', fontSize:'0.8rem', cursor:'pointer', textDecoration:'underline', opacity:0.7 }}
+        >
+          Sign out
+        </button>
+      </div>
     </div>
   );
 }
