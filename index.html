@@ -710,15 +710,13 @@ function BillCard({ bill, allNames, onClick, onComplete, muted }) {
           </div>
           <div style={{ fontSize:12, color:'var(--muted)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <span>{assigned} of {total} assigned</span>
-            {isReady && (
-              <button
-                className="btn btn-success"
-                style={{ fontSize:12, padding:'4px 10px', borderRadius:8 }}
-                onClick={e => { e.stopPropagation(); onComplete && onComplete(); }}
-              >
-                ✓ Mark Complete
-              </button>
-            )}
+            <button
+              className={'btn ' + (isReady ? 'btn-success' : 'btn-ghost')}
+              style={{ fontSize:12, padding:'4px 10px', borderRadius:8 }}
+              onClick={e => { e.stopPropagation(); onComplete && onComplete(); }}
+            >
+              ✓ Complete
+            </button>
           </div>
         </div>
       )}
@@ -990,16 +988,16 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
 
         {/* Fixed bottom — Complete button */}
         {!isDone && (
-          <div style={{ padding:'12px 20px', paddingBottom:'max(12px, env(safe-area-inset-bottom))', borderTop:'1px solid var(--border)', background:'white' }}>
-            {allAssigned
-              ? <button className="btn btn-success btn-full btn-lg" onClick={handleComplete}
-                  style={{ boxShadow:'0 4px 16px rgba(22,163,74,.28)' }}>
-                  ✅ Mark as Complete
-                </button>
-              : <button className="btn btn-ghost btn-full" onClick={() => setView('items')}>
-                  ← Back to Items ({total - assigned} remaining)
-                </button>
-            }
+          <div style={{ padding:'12px 20px', paddingBottom:'max(12px, env(safe-area-inset-bottom))', borderTop:'1px solid var(--border)', background:'white', display:'flex', flexDirection:'column', gap:8 }}>
+            <button className="btn btn-success btn-full btn-lg" onClick={handleComplete}
+                style={{ boxShadow:'0 4px 16px rgba(22,163,74,.28)' }}>
+                ✅ Mark as Complete
+            </button>
+            {!allAssigned && (
+              <button className="btn btn-ghost btn-full" style={{ fontSize:14 }} onClick={() => setView('items')}>
+                ← Back to Items ({total - assigned} unassigned)
+              </button>
+            )}
           </div>
         )}
       </div>
