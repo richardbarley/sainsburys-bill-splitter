@@ -930,8 +930,16 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                 {safeIdx + 1} of {total}
               </div>
 
-              {/* Item name */}
-              <div style={{ fontSize:20, fontWeight:700, textAlign:'center', lineHeight:1.3, marginBottom:10, maxWidth:300 }}>
+              {/* Item name — clamped to exactly 2 lines so nothing below ever shifts */}
+              <div style={{
+                fontSize: 19, fontWeight: 700, textAlign: 'center', lineHeight: 1.35,
+                marginBottom: 10, maxWidth: 320, width: '100%',
+                height: '2.7em',           /* always exactly 2 lines tall */
+                overflow: 'hidden',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+              }}>
                 {item.name}
               </div>
 
@@ -940,36 +948,69 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                 £{item.price.toFixed(2)}
               </div>
 
-              {/* Person chips — large, easy to tap */}
-              <div style={{ display:'flex', flexWrap:'wrap', gap:10, justifyContent:'center', marginBottom:20 }}>
-                {allNames.map(name => {
-                  const sel     = assignees.includes(name);
-                  const c       = colorFor(name, allNames);
-                  const isGroup = (config.groups || []).some(g => g.name === name);
-                  return (
-                    <button
-                      key={name}
-                      disabled={isDone}
-                      style={{
-                        padding: '13px 22px',
-                        borderRadius: 32,
-                        border: '2px solid',
-                        fontSize: 16,
-                        fontWeight: 700,
-                        cursor: isDone ? 'default' : 'pointer',
-                        transition: 'all .12s',
-                        WebkitTapHighlightColor: 'transparent',
-                        ...(sel
-                          ? { background: c.bg, borderColor: c.bd, color: c.fg }
-                          : { background: '#f1f5f9', borderColor: '#e2e8f0', color: '#94a3b8' }
-                        ),
-                      }}
-                      onClick={() => toggle(name)}
-                    >
-                      {isGroup ? '👥 ' : ''}{name}
-                    </button>
-                  );
-                })}
+              {/* Chips — individuals first, then groups on their own row */}
+              <div style={{ width:'100%', maxWidth:360, marginBottom:20 }}>
+
+                {/* Individual people */}
+                {(config.people || []).length > 0 && (
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:10, justifyContent:'center', marginBottom: (config.groups || []).length > 0 ? 10 : 0 }}>
+                    {(config.people || []).map(name => {
+                      const sel = assignees.includes(name);
+                      const c   = colorFor(name, allNames);
+                      return (
+                        <button key={name} disabled={isDone}
+                          style={{
+                            padding:'13px 22px', borderRadius:32, border:'2px solid',
+                            fontSize:16, fontWeight:700,
+                            cursor: isDone ? 'default' : 'pointer',
+                            transition:'all .12s', WebkitTapHighlightColor:'transparent',
+                            ...(sel
+                              ? { background:c.bg, borderColor:c.bd, color:c.fg }
+                              : { background:'#f1f5f9', borderColor:'#e2e8f0', color:'#94a3b8' }
+                            ),
+                          }}
+                          onClick={() => toggle(name)}
+                        >
+                          {name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Groups — visually separated */}
+                {(config.groups || []).length > 0 && (
+                  <>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, margin:'2px 0 10px' }}>
+                      <div style={{ flex:1, height:1, background:'var(--border)' }} />
+                      <span style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em' }}>Groups</span>
+                      <div style={{ flex:1, height:1, background:'var(--border)' }} />
+                    </div>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:10, justifyContent:'center' }}>
+                      {(config.groups || []).map(g => {
+                        const sel = assignees.includes(g.name);
+                        const c   = colorFor(g.name, allNames);
+                        return (
+                          <button key={g.name} disabled={isDone}
+                            style={{
+                              padding:'13px 22px', borderRadius:32, border:'2px solid',
+                              fontSize:16, fontWeight:700,
+                              cursor: isDone ? 'default' : 'pointer',
+                              transition:'all .12s', WebkitTapHighlightColor:'transparent',
+                              ...(sel
+                                ? { background:c.bg, borderColor:c.bd, color:c.fg }
+                                : { background:'#f1f5f9', borderColor:'#e2e8f0', color:'#94a3b8' }
+                              ),
+                            }}
+                            onClick={() => toggle(g.name)}
+                          >
+                            👥 {g.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Assignment status line — fixed height so nothing shifts */}
