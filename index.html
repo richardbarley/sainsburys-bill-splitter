@@ -1024,12 +1024,36 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
         </button>
       </div>
 
-      {/* Progress bar */}
-      <div style={{ flexShrink:0, padding:'10px 20px 8px', borderBottom:'1px solid var(--border)', background:'#fafafa' }}>
-        <div className="prog-bar">
-          <div className={'prog-fill' + (isDone ? ' done' : '')} style={{ width:(pct*100)+'%' }} />
+      {/* Segmented item tracker */}
+      <div style={{ flexShrink:0, padding:'10px 16px 8px', borderBottom:'1px solid var(--border)', background:'#fafafa' }}>
+        {/* One segment per item — green=assigned, blue=current, grey=unassigned */}
+        <div style={{ display:'flex', gap:2, alignItems:'flex-end', marginBottom:6, height:10 }}>
+          {bill.items.map((_, i) => {
+            const isAssigned = getAssignees(bill.assignments, i).length > 0;
+            const isCurrent  = i === safeIdx;
+            return (
+              <div
+                key={i}
+                onClick={() => setItemIdx(i)}
+                style={{
+                  flex: 1,
+                  height: isCurrent ? 10 : 5,
+                  borderRadius: 3,
+                  background: isDone
+                    ? 'var(--success)'
+                    : isCurrent
+                      ? 'var(--primary)'
+                      : isAssigned
+                        ? 'var(--success)'
+                        : 'var(--border)',
+                  cursor: 'pointer',
+                  transition: 'height .15s, background .15s',
+                }}
+              />
+            );
+          })}
         </div>
-        <div style={{ display:'flex', justifyContent:'space-between', marginTop:4, fontSize:12, color:'var(--muted)' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'var(--muted)' }}>
           <span>{assigned} of {total} assigned</span>
           {allAssigned && !isDone && (
             <button style={{ background:'none', border:'none', color:'var(--success)', fontWeight:700, fontSize:12, cursor:'pointer', padding:0 }}
@@ -1051,11 +1075,6 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
               <p>Go to Settings → People to add household members.</p>
             </div>
           : <>
-              {/* Item counter */}
-              <div style={{ fontSize:13, fontWeight:600, color:'var(--muted)', marginBottom:16, letterSpacing:'.02em' }}>
-                {safeIdx + 1} of {total}
-              </div>
-
               {/* Item name — clamped to exactly 2 lines so nothing below ever shifts */}
               <div style={{
                 fontSize: 19, fontWeight: 700, textAlign: 'center', lineHeight: 1.35,
