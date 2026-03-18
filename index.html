@@ -742,9 +742,65 @@ function BillCard({ bill, allNames, onClick, onComplete, muted }) {
 }
 
 // ════════════════════════════════════════════════════════════
+// SUGGESTION ENGINE
+// ════════════════════════════════════════════════════════════
+
+// Strip quantities, units, and noise words so "Whole Milk 4 Pints" matches "Whole Milk 6 Pints"
+function normalizeForMatch(name) {
+  return name
+    .toLowerCase()
+    .replace(/\d+(\.\d+)?\s*(ml|cl|dl|l|g|kg|mg|lb|oz|pints?|pk|pack|cans?|bottles?|x\d*|\d*x)\b/gi, '')
+    .replace(/\b\d+\b/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(w => w.length > 2); // drop tiny words: "of", "by", "a"
+}
+
+function itemSimilarity(a, b) {
+  const sa = new Set(normalizeForMatch(a));
+  const sb = new Set(normalizeForMatch(b));
+  if (!sa.size || !sb.size) return 0;
+  let inter = 0;
+  sa.forEach(w => { if (sb.has(w)) inter++; });
+  return inter / (sa.size + sb.size - inter); // Jaccard index
+}
+
+// Returns { [itemIdx]: assignees[] } for items with confident historical matches
+function computeSuggestions(pastBills, currentBill) {
+  const MATCH_THRESHOLD = 0.35; // minimum per-item similarity to consider
+  const MIN_CONFIDENCE  = 0.25; // minimum weighted score to surface suggestion
+  const suggestions = {};
+
+  currentBill.items.forEach((item, idx) => {
+    const tally = {}; // serialised assignee-list -> weighted score
+
+    pastBills.forEach((past, age) => {
+      if (past.id === currentBill.id) return;
+      const recency = 1 / (age + 1); // most recent bill gets weight 1, next 0.5, etc.
+
+      past.items.forEach((pastItem, pi) => {
+        const sim = itemSimilarity(item.name, pastItem.name);
+        if (sim < MATCH_THRESHOLD) return;
+        const assignees = getAssignees(past.assignments, pi);
+        if (!assignees.length) return;
+        const key = JSON.stringify([...assignees].sort());
+        tally[key] = (tally[key] || 0) + sim * recency;
+      });
+    });
+
+    if (!Object.keys(tally).length) return;
+    const [bestKey, score] = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+    if (score >= MIN_CONFIDENCE) suggestions[idx] = JSON.parse(bestKey);
+  });
+
+  return suggestions;
+}
+
+// ════════════════════════════════════════════════════════════
 // BILL DETAIL SCREEN  (Items tab + Summary tab)
 // ════════════════════════════════════════════════════════════
-function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, completeBill, deleteBill, showToast }) {
+function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignments, completeBill, deleteBill, showToast }) {
   const [itemIdx,       setItemIdx]       = useState(0);
   const [view,          setView]          = useState('items'); // 'items' | 'summary'
   const [summaryTab,    setSummaryTab]    = useState('person'); // 'person' | 'item'
@@ -771,6 +827,17 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
     () => calcTotals(bill.items, bill.assignments, config.groups),
     [bill.items, bill.assignments, config.groups]
   );
+
+  // Suggestion engine — runs once per bill load, uses all other bills as history
+  const suggestions = useMemo(
+    () => computeSuggestions(bills || [], bill),
+    [bill.id] // only recompute when a different bill is opened
+  );
+
+  async function acceptSuggestion(assignees) {
+    const newAssign = { ...bill.assignments, [String(safeIdx)]: assignees };
+    await saveBillAssignments(bill, newAssign);
+  }
 
   async function toggle(name) {
     if (isDone) return;
@@ -1178,14 +1245,14 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                 ); // end IIFE return
               })()} {/* end IIFE */}
 
-              {/* Assignment status line — fixed height so nothing shifts */}
+              {/* Assignment status / suggestion line — fixed height so nothing shifts */}
               {(() => {
                 const gmap2 = {};
                 (config.groups || []).forEach(g => { gmap2[g.name] = g.members || []; });
-                // Expand assignees to real people for cost-split display
                 const expanded = assignees.flatMap(a => gmap2[a]?.length ? gmap2[a] : [a]);
+                const suggestion = !isDone && assignees.length === 0 ? suggestions[safeIdx] : null;
                 return (
-                  <div style={{ height:24, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <div style={{ height:32, display:'flex', alignItems:'center', justifyContent:'center' }}>
                     {assignees.length > 0
                       ? <span style={{ fontSize:14, color:'var(--success)', fontWeight:600 }}>
                           ✓ {assignees.join(' & ')}
@@ -1195,9 +1262,24 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                             </span>
                           )}
                         </span>
-                      : <span style={{ fontSize:13, color:'var(--muted)' }}>
-                          {isDone ? '' : 'Tap a name to assign'}
-                        </span>
+                      : suggestion
+                        ? <button
+                            onClick={() => acceptSuggestion(suggestion)}
+                            style={{
+                              display:'inline-flex', alignItems:'center', gap:6,
+                              background:'#eff6ff', border:'1px solid #bfdbfe',
+                              borderRadius:20, padding:'5px 14px',
+                              cursor:'pointer', fontSize:13, fontWeight:600,
+                              color:'var(--primary)',
+                            }}
+                          >
+                            <span style={{ fontSize:14 }}>💡</span>
+                            {suggestion.join(' & ')}
+                            <span style={{ fontSize:11, color:'#93c5fd', fontWeight:400 }}>tap to assign</span>
+                          </button>
+                        : <span style={{ fontSize:13, color:'var(--muted)' }}>
+                            {isDone ? '' : 'Tap a name to assign'}
+                          </span>
                     }
                   </div>
                 );
