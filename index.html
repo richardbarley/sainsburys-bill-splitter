@@ -714,29 +714,54 @@ function BillCard({ bill, allNames, onClick }) {
 // BILL DETAIL SCREEN  (Items tab + Summary tab)
 // ════════════════════════════════════════════════════════════
 function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, completeBill, deleteBill, showToast }) {
-  const [tab, setTab] = useState('items');
+  const [itemIdx,  setItemIdx]  = useState(0);
+  const [view,     setView]     = useState('items'); // 'items' | 'summary'
+  const touchStartX = useRef(null);
 
   const allNames = useMemo(() => [
     ...(config.people || []),
     ...(config.groups || []).map(g => g.name),
   ], [config]);
 
-  const assigned   = countAssigned(bill.items, bill.assignments);
-  const total      = bill.items.length;
-  const pct        = total > 0 ? assigned / total : 0;
-  const isDone     = !!bill.completedAt;
+  const isDone      = !!bill.completedAt;
+  const total       = bill.items.length;
+  const assigned    = countAssigned(bill.items, bill.assignments);
   const allAssigned = assigned === total && total > 0;
+  const pct         = total > 0 ? assigned / total : 0;
+
+  // Keep itemIdx in bounds when bill updates via real-time
+  const safeIdx  = Math.min(itemIdx, Math.max(0, total - 1));
+  const item     = bill.items[safeIdx] || { name: '', price: 0 };
+  const assignees = getAssignees(bill.assignments, safeIdx);
 
   const totals = useMemo(
     () => calcTotals(bill.items, bill.assignments, config.groups),
     [bill.items, bill.assignments, config.groups]
   );
 
-  async function toggle(itemIdx, name) {
+  async function toggle(name) {
     if (isDone) return;
-    const cur = getAssignees(bill.assignments, itemIdx);
+    const cur = getAssignees(bill.assignments, safeIdx);
     const nxt = cur.includes(name) ? cur.filter(n => n !== name) : [...cur, name];
-    await saveBillAssignments(bill, { ...bill.assignments, [String(itemIdx)]: nxt });
+    await saveBillAssignments(bill, { ...bill.assignments, [String(safeIdx)]: nxt });
+  }
+
+  function goNext() {
+    if (safeIdx < total - 1) setItemIdx(safeIdx + 1);
+    else setView('summary');
+  }
+  function goPrev() {
+    if (safeIdx > 0) setItemIdx(safeIdx - 1);
+    else onBack();
+  }
+
+  // Swipe left = next, swipe right = prev
+  function onTouchStart(e) { touchStartX.current = e.touches[0].clientX; }
+  function onTouchEnd(e) {
+    if (touchStartX.current === null) return;
+    const dx = touchStartX.current - e.changedTouches[0].clientX;
+    if (Math.abs(dx) > 55) { dx > 0 ? goNext() : goPrev(); }
+    touchStartX.current = null;
   }
 
   async function handleComplete() {
@@ -744,120 +769,40 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
     onBack();
   }
 
-  async function handleDelete() {
-    if (!confirm('Delete this receipt? This cannot be undone.')) return;
-    await deleteBill(bill);
-  }
+  // ── SUMMARY VIEW ─────────────────────────────────────────
+  if (view === 'summary') {
+    const gmap = {};
+    (config.groups || []).forEach(g => { gmap[g.name] = g.members || []; });
+    const unassTotal = bill.items
+      .filter((_, i) => !getAssignees(bill.assignments, i).length)
+      .reduce((s, x) => s + x.price, 0);
 
-  return (
-    <div>
-      {/* Header */}
-      <div className="header">
-        <button className="btn btn-ghost" style={{ padding:'6px 10px', marginLeft:-6 }} onClick={onBack}>
-          ← Back
-        </button>
-        <div className="header-sub">
-          <div className="htitle">{bill.receiptDate || 'Receipt'}</div>
-          <div className="hdetail">{total} items · £{bill.totalBill.toFixed(2)}</div>
-        </div>
-        {isDone && <span className="badge badge-done">✓ Done</span>}
-      </div>
-
-      {/* Progress banner */}
-      {!isDone && (
-        <div style={{ padding:'10px 20px 12px', borderBottom:'1px solid var(--border)', background:'#fafafa' }}>
-          <div className="prog-bar" style={{ marginBottom:5 }}>
-            <div className="prog-fill" style={{ width:(pct*100)+'%' }} />
+    return (
+      <div style={{ display:'flex', flexDirection:'column', height:'100vh', height:'100dvh' }}>
+        {/* Header */}
+        <div className="header">
+          <button className="btn btn-ghost" style={{ padding:'6px 10px', marginLeft:-6 }}
+            onClick={() => setView('items')}>
+            ← Items
+          </button>
+          <div className="header-sub">
+            <div className="htitle">Summary</div>
+            <div className="hdetail">{bill.receiptDate || 'Receipt'} · £{bill.totalBill.toFixed(2)}</div>
           </div>
-          <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'var(--muted)' }}>
-            <span>{assigned} of {total} items assigned</span>
-            {allAssigned && <span style={{ color:'var(--success)', fontWeight:700 }}>All assigned ✓</span>}
-          </div>
+          {isDone && <span className="badge badge-done">✓ Done</span>}
         </div>
-      )}
 
-      {/* Tabs */}
-      <div className="tab-bar">
-        <div className={'tab' + (tab === 'items'   ? ' on' : '')} onClick={() => setTab('items')}>Items</div>
-        <div className={'tab' + (tab === 'summary' ? ' on' : '')} onClick={() => setTab('summary')}>Summary</div>
-      </div>
-
-      {/* ── ITEMS TAB ── */}
-      {tab === 'items' && (
-        <div>
-          {allNames.length === 0
-            ? <div className="empty">
-                <div className="eicon">👤</div>
-                <h3>No people configured</h3>
-                <p>Go to Settings → People to add household members before assigning items.</p>
-              </div>
-            : bill.items.map((item, i) => {
-                const assignees = getAssignees(bill.assignments, i);
-                return (
-                  <div key={i} className="item-row">
-                    <div className="item-row-top">
-                      <span className="item-name">{item.name}</span>
-                      <span className="item-price">£{item.price.toFixed(2)}</span>
-                    </div>
-                    <div className="item-chips">
-                      {allNames.map(name => {
-                        const sel     = assignees.includes(name);
-                        const c       = colorFor(name, allNames);
-                        const isGroup = (config.groups || []).some(g => g.name === name);
-                        return (
-                          <button
-                            key={name}
-                            className={'chip' + (sel ? '' : ' chip-off')}
-                            disabled={isDone}
-                            style={sel ? { background:c.bg, borderColor:c.bd, color:c.fg } : {}}
-                            onClick={() => toggle(i, name)}
-                          >
-                            {isGroup ? '👥 ' : ''}{name}
-                            {sel && assignees.length > 1 && (
-                              <span style={{ opacity:.65, fontSize:10.5 }}>
-                                {' '}£{(item.price / assignees.length).toFixed(2)}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })
-          }
-
-          <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:10 }}>
-            {!isDone && allAssigned && (
-              <button className="btn btn-success btn-full btn-lg" onClick={handleComplete}
-                style={{ boxShadow:'0 4px 16px rgba(22,163,74,.28)' }}>
-                ✅ Mark as Complete
-              </button>
-            )}
-            <div style={{ textAlign:'right' }}>
-              <button className="btn btn-ghost" style={{ fontSize:13, color:'var(--danger)' }}
-                onClick={handleDelete}>
-                🗑 Delete receipt
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── SUMMARY TAB ── */}
-      {tab === 'summary' && (
-        <div>
+        {/* Scrollable content */}
+        <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' }}>
           {!Object.keys(totals).length
             ? <div className="empty">
                 <div className="eicon">📊</div>
                 <h3>Nothing assigned yet</h3>
-                <p>Switch to Items to start assigning this receipt to household members.</p>
+                <p>Go back to Items to start assigning.</p>
               </div>
             : <>
                 {Object.entries(totals).sort((a, b) => b[1] - a[1]).map(([name, amount]) => {
                   const c = colorFor(name, allNames);
-                  const gmap = {};
-                  (config.groups || []).forEach(g => { gmap[g.name] = g.members || []; });
                   const personItems = bill.items.filter((_, i) => {
                     const expanded = getAssignees(bill.assignments, i).flatMap(n => gmap[n] || [n]);
                     return expanded.includes(name);
@@ -871,12 +816,9 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                       </div>
                       {personItems.length > 0 && (
                         <div style={{ padding:'0 20px 10px', display:'flex', flexWrap:'wrap', gap:4 }}>
-                          {personItems.map((item, j) => (
-                            <span key={j} style={{
-                              fontSize:12, color:'var(--muted)', background:'#f8fafc',
-                              border:'1px solid var(--border)', borderRadius:6, padding:'2px 6px',
-                            }}>
-                              {item.name}
+                          {personItems.map((itm, j) => (
+                            <span key={j} style={{ fontSize:12, color:'var(--muted)', background:'#f8fafc', border:'1px solid var(--border)', borderRadius:6, padding:'2px 6px' }}>
+                              {itm.name}
                             </span>
                           ))}
                         </div>
@@ -885,49 +827,206 @@ function BillDetailScreen({ bill, config, user, onBack, saveBillAssignments, com
                   );
                 })}
 
-                {/* Unassigned */}
-                {(() => {
-                  const unass = bill.items
-                    .filter((_, i) => !getAssignees(bill.assignments, i).length)
-                    .reduce((s, x) => s + x.price, 0);
-                  return unass > 0 ? (
-                    <div className="sum-row" style={{ opacity:.55 }}>
-                      <div style={{ width:10, height:10, borderRadius:'50%', background:'#94a3b8', flexShrink:0 }} />
-                      <span className="sum-name" style={{ color:'var(--muted)' }}>Unassigned</span>
-                      <span className="sum-amount" style={{ color:'var(--muted)' }}>£{unass.toFixed(2)}</span>
-                    </div>
-                  ) : null;
-                })()}
+                {unassTotal > 0 && (
+                  <div className="sum-row" style={{ opacity:.55 }}>
+                    <div style={{ width:10, height:10, borderRadius:'50%', background:'#94a3b8', flexShrink:0 }} />
+                    <span className="sum-name" style={{ color:'var(--muted)' }}>Unassigned</span>
+                    <span className="sum-amount" style={{ color:'var(--muted)' }}>£{unassTotal.toFixed(2)}</span>
+                  </div>
+                )}
 
-                {/* Grand total */}
-                <div style={{ padding:'12px 20px', borderTop:'2px solid var(--border)', marginTop:2 }}>
+                <div style={{ padding:'14px 20px', borderTop:'2px solid var(--border)' }}>
                   <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, fontSize:17 }}>
-                    <span>Total</span>
-                    <span>£{bill.totalBill.toFixed(2)}</span>
+                    <span>Total</span><span>£{bill.totalBill.toFixed(2)}</span>
                   </div>
                 </div>
 
-                <div style={{ padding:'0 20px 16px', display:'flex', flexDirection:'column', gap:10 }}>
-                  {!isDone && allAssigned && (
-                    <button className="btn btn-success btn-full btn-lg" onClick={handleComplete}
-                      style={{ boxShadow:'0 4px 16px rgba(22,163,74,.28)' }}>
-                      ✅ Mark as Complete
-                    </button>
-                  )}
-                  {isDone && (
-                    <div style={{
-                      background:'var(--success-light)', borderRadius:10, padding:'12px 16px',
-                      fontSize:13, color:'var(--success)', fontWeight:600, textAlign:'center',
-                    }}>
-                      ✅ Completed {fmtDate(bill.completedAt)}
-                      {bill.completedBy && <> by {bill.completedBy.split('@')[0]}</>}
-                    </div>
-                  )}
+                {isDone && (
+                  <div style={{ margin:'0 16px 16px', background:'var(--success-light)', borderRadius:10, padding:'12px 16px', fontSize:13, color:'var(--success)', fontWeight:600, textAlign:'center' }}>
+                    ✅ Completed {fmtDate(bill.completedAt)}{bill.completedBy && <> by {bill.completedBy.split('@')[0]}</>}
+                  </div>
+                )}
+
+                {/* Delete */}
+                <div style={{ textAlign:'center', padding:'0 20px 24px' }}>
+                  <button className="btn btn-ghost" style={{ fontSize:13, color:'var(--danger)' }}
+                    onClick={async () => { if (confirm('Delete this receipt?')) await deleteBill(bill); }}>
+                    🗑 Delete receipt
+                  </button>
                 </div>
               </>
           }
         </div>
-      )}
+
+        {/* Fixed bottom — Complete button */}
+        {!isDone && (
+          <div style={{ padding:'12px 20px', paddingBottom:'max(12px, env(safe-area-inset-bottom))', borderTop:'1px solid var(--border)', background:'white' }}>
+            {allAssigned
+              ? <button className="btn btn-success btn-full btn-lg" onClick={handleComplete}
+                  style={{ boxShadow:'0 4px 16px rgba(22,163,74,.28)' }}>
+                  ✅ Mark as Complete
+                </button>
+              : <button className="btn btn-ghost btn-full" onClick={() => setView('items')}>
+                  ← Back to Items ({total - assigned} remaining)
+                </button>
+            }
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── ITEMS CARD VIEW ───────────────────────────────────────
+  return (
+    <div
+      style={{ display:'flex', flexDirection:'column', height:'100vh', height:'100dvh', userSelect:'none' }}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* Header */}
+      <div className="header" style={{ flexShrink:0 }}>
+        <button className="btn btn-ghost" style={{ padding:'6px 10px', marginLeft:-6 }} onClick={onBack}>
+          ← Back
+        </button>
+        <div className="header-sub">
+          <div className="htitle">{bill.receiptDate || 'Receipt'}</div>
+          <div className="hdetail">{total} items · £{bill.totalBill.toFixed(2)}</div>
+        </div>
+        <button className="btn btn-ghost" style={{ padding:'6px 10px', fontSize:13, whiteSpace:'nowrap' }}
+          onClick={() => setView('summary')}>
+          Summary
+        </button>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ flexShrink:0, padding:'10px 20px 8px', borderBottom:'1px solid var(--border)', background:'#fafafa' }}>
+        <div className="prog-bar">
+          <div className={'prog-fill' + (isDone ? ' done' : '')} style={{ width:(pct*100)+'%' }} />
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', marginTop:4, fontSize:12, color:'var(--muted)' }}>
+          <span>{assigned} of {total} assigned</span>
+          {allAssigned && !isDone && (
+            <button style={{ background:'none', border:'none', color:'var(--success)', fontWeight:700, fontSize:12, cursor:'pointer', padding:0 }}
+              onClick={() => setView('summary')}>
+              All done — view summary →
+            </button>
+          )}
+          {isDone && <span style={{ color:'var(--success)', fontWeight:700 }}>✓ Complete</span>}
+        </div>
+      </div>
+
+      {/* Item card — fills remaining space, content vertically centred */}
+      <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', padding:'16px 24px', gap:0, overflow:'hidden' }}>
+
+        {allNames.length === 0
+          ? <div className="empty" style={{ padding:0 }}>
+              <div className="eicon">👤</div>
+              <h3>No people configured</h3>
+              <p>Go to Settings → People to add household members.</p>
+            </div>
+          : <>
+              {/* Item counter */}
+              <div style={{ fontSize:13, fontWeight:600, color:'var(--muted)', marginBottom:16, letterSpacing:'.02em' }}>
+                {safeIdx + 1} of {total}
+              </div>
+
+              {/* Item name */}
+              <div style={{ fontSize:20, fontWeight:700, textAlign:'center', lineHeight:1.3, marginBottom:10, maxWidth:300 }}>
+                {item.name}
+              </div>
+
+              {/* Price */}
+              <div style={{ fontSize:36, fontWeight:800, color:'var(--primary)', letterSpacing:'-1px', marginBottom:28 }}>
+                £{item.price.toFixed(2)}
+              </div>
+
+              {/* Person chips — large, easy to tap */}
+              <div style={{ display:'flex', flexWrap:'wrap', gap:10, justifyContent:'center', marginBottom:20 }}>
+                {allNames.map(name => {
+                  const sel     = assignees.includes(name);
+                  const c       = colorFor(name, allNames);
+                  const isGroup = (config.groups || []).some(g => g.name === name);
+                  return (
+                    <button
+                      key={name}
+                      disabled={isDone}
+                      style={{
+                        padding: '13px 22px',
+                        borderRadius: 32,
+                        border: '2px solid',
+                        fontSize: 16,
+                        fontWeight: 700,
+                        cursor: isDone ? 'default' : 'pointer',
+                        transition: 'all .12s',
+                        WebkitTapHighlightColor: 'transparent',
+                        ...(sel
+                          ? { background: c.bg, borderColor: c.bd, color: c.fg }
+                          : { background: '#f1f5f9', borderColor: '#e2e8f0', color: '#94a3b8' }
+                        ),
+                      }}
+                      onClick={() => toggle(name)}
+                    >
+                      {isGroup ? '👥 ' : ''}{name}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Assignment status line — fixed height so nothing shifts */}
+              <div style={{ height:24, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {assignees.length > 0
+                  ? <span style={{ fontSize:14, color:'var(--success)', fontWeight:600 }}>
+                      ✓ {assignees.join(' & ')}
+                      {assignees.length > 1 && (
+                        <span style={{ color:'var(--muted)', fontWeight:400 }}>
+                          {' '}· £{(item.price / assignees.length).toFixed(2)} each
+                        </span>
+                      )}
+                    </span>
+                  : <span style={{ fontSize:13, color:'var(--muted)' }}>
+                      {isDone ? '' : 'Tap a name to assign'}
+                    </span>
+                }
+              </div>
+            </>
+        }
+      </div>
+
+      {/* Bottom nav — fixed, NEVER moves, same layout always */}
+      <div style={{
+        flexShrink: 0,
+        display: 'grid',
+        gridTemplateColumns: '1fr auto 1fr',
+        alignItems: 'center',
+        gap: 8,
+        padding: '12px 20px',
+        paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
+        borderTop: '1px solid var(--border)',
+        background: 'white',
+      }}>
+        {/* Left — always same width */}
+        <button
+          className="btn btn-ghost"
+          style={{ justifySelf:'start', minWidth:88, fontSize:15 }}
+          onClick={goPrev}
+        >
+          {safeIdx > 0 ? '← Prev' : '← List'}
+        </button>
+
+        {/* Centre counter */}
+        <span style={{ fontSize:13, color:'var(--muted)', fontWeight:600, textAlign:'center', whiteSpace:'nowrap' }}>
+          {safeIdx + 1} / {total}
+        </span>
+
+        {/* Right — always same width */}
+        <button
+          className={'btn ' + (safeIdx < total - 1 ? 'btn-primary' : 'btn-success')}
+          style={{ justifySelf:'end', minWidth:88, fontSize:15 }}
+          onClick={goNext}
+        >
+          {safeIdx < total - 1 ? 'Next →' : 'Summary →'}
+        </button>
+      </div>
     </div>
   );
 }
