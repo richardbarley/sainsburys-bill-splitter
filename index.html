@@ -697,18 +697,18 @@
                 const fullMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
                 const shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
                 const allMonthPat = fullMonths.concat(shortMonths).join('|');
-                // "18 March 2026" or "18 Mar 2026"
-                const longRe = new RegExp('(\\d{1,2})\\s+(' + allMonthPat + ')\\s+(\\d{2,4})', 'i');
+                // "Sunday 1st March 2026" or "1st March 2026" or "1 March 2026" or "1 Mar 2026"
+                const ordinalRe = new RegExp('(\\d{1,2})(?:st|nd|rd|th)?\\s+(' + allMonthPat + ')\\s+(\\d{2,4})', 'i');
                 // "18/03/2026" or "18/03/26"
                 const slashRe = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/;
                 // "18-03-2026"
                 const dashRe = /(\d{1,2})-(\d{1,2})-(\d{4})/;
 
-                const fmt = (d) => isNaN(d) ? null : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                const fmt = (d) => (!d || isNaN(d)) ? null : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i];
-                    const m = line.match(longRe);
+                    const m = line.match(ordinalRe);
                     if (m) {
                         const year = m[3].length === 2 ? '20' + m[3] : m[3];
                         const result = fmt(new Date(m[1] + ' ' + m[2] + ' ' + year));
@@ -2202,9 +2202,15 @@
                             </div>
                         )}
 
-                        <button className="button button-back" onClick={() => setShowHistory(false)} style={{ width: '100%', marginTop: '20px' }}>
-                            ← Back
-                        </button>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                            <button className="button button-back" onClick={() => setShowHistory(false)} style={{ flex: 1 }}>
+                                ← Back
+                            </button>
+                            <button onClick={() => { clearSession(); setShowHistory(false); }}
+                                style={{ flex: 1, padding: '16px 24px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 600, color: 'white', cursor: 'pointer' }}>
+                                + New bill
+                            </button>
+                        </div>
                     </div>
                     </>
                 );
