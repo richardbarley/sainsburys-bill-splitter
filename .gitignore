@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Test files
+*.pdf
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
