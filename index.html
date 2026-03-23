@@ -1042,12 +1042,6 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
                     </div>
                   )}
 
-                  <div style={{ textAlign:'center', padding:'8px 20px 24px' }}>
-                    <button className="btn btn-ghost" style={{ fontSize:13, color:'var(--danger)' }}
-                      onClick={async () => { if (confirm('Delete this receipt?')) await deleteBill(bill); }}>
-                      🗑 Delete receipt
-                    </button>
-                  </div>
                 </>
           )}
 
@@ -1093,9 +1087,9 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
 
         </div>
 
-        {/* Fixed bottom — Complete button */}
-        {!isDone && (
-          <div style={{ padding:'12px 20px', paddingBottom:'max(12px, env(safe-area-inset-bottom))', borderTop:'1px solid var(--border)', background:'white', display:'flex', flexDirection:'column', gap:8 }}>
+        {/* Fixed bottom — actions */}
+        <div style={{ padding:'12px 20px', paddingBottom:'max(12px, env(safe-area-inset-bottom))', borderTop:'1px solid var(--border)', background:'white', display:'flex', flexDirection:'column', gap:8 }}>
+          {!isDone && <>
             <button className="btn btn-success btn-full btn-lg" onClick={handleComplete}
                 style={{ boxShadow:'0 4px 16px rgba(22,163,74,.28)' }}>
                 ✅ Mark as Complete
@@ -1105,8 +1099,13 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
                 ← Back to Items ({total - assigned} unassigned)
               </button>
             )}
-          </div>
-        )}
+          </>}
+          <button
+            onClick={async () => { if (confirm('Delete this receipt? This cannot be undone.')) { await deleteBill(bill); } }}
+            style={{ background:'none', border:'none', color:'var(--danger)', fontSize:13, cursor:'pointer', opacity:0.7, padding:'2px 0' }}>
+            🗑 Delete receipt
+          </button>
+        </div>
       </div>
     );
   }
