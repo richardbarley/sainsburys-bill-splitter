@@ -280,31 +280,73 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 async function parsePdf(file) {
-  const buf  = await file.arrayBuffer();
-  const pdf  = await pdfjsLib.getDocument({ data: buf }).promise;
-  let   text = '';
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const allLines = [];
+
   for (let p = 1; p <= pdf.numPages; p++) {
     const page    = await pdf.getPage(p);
     const content = await page.getTextContent();
-    text += content.items.map(i => i.str).join(' ') + '\n';
+
+    // Group text items by Y coordinate so we reconstruct real visual lines.
+    // (The naive join(' ') approach collapses an entire page to one string,
+    //  meaning only the very last £x.xx on the page ever matches.)
+    const byY = new Map();
+    for (const item of content.items) {
+      if (!item.str.trim()) continue;
+      const y = Math.round(item.transform[5]); // rounded Y position
+      if (!byY.has(y)) byY.set(y, []);
+      byY.get(y).push({ str: item.str, x: item.transform[4] });
+    }
+    // PDF Y axis is bottom-up → sort descending to read top-to-bottom
+    for (const y of [...byY.keys()].sort((a, b) => b - a)) {
+      const line = byY.get(y)
+        .sort((a, b) => a.x - b.x)
+        .map(i => i.str).join(' ').trim();
+      if (line) allLines.push(line);
+    }
   }
+
+  // Some long item names wrap onto the next line (no £ price).
+  // Merge any priceless line into the following priced line.
+  const mergedLines = [];
+  let pending = '';
+  for (const line of allLines) {
+    if (/£\d+\.\d{2}/.test(line)) {
+      mergedLines.push(pending ? pending + ' ' + line : line);
+      pending = '';
+    } else {
+      pending = pending ? pending + ' ' + line : line;
+    }
+  }
+  if (pending) mergedLines.push(pending);
+
+  const text = mergedLines.join('\n');
   return { items: parseReceiptItems(text), receiptDate: extractReceiptDate(text) };
 }
 
 function parseReceiptItems(text) {
-  const SKIP = /^(subtotal|total|balance|savings|clubcard|nectar|reward|payment|change|cash|visa|mastercard|contactless|approved|thank you|store|receipt|transaction|vat|points|voucher|bag|carrier|loyalty|online|delivery|charge|fee|price match|you save|spend|earn|bonus|offer|discount|saving|low every)/i;
-  const PRICE_END = /^(.*?)\s+£?(\d+\.\d{2})\s*[A-Z*]?\s*$/;
+  const SKIP = /^(subtotal|total|balance|savings|saved|clubcard|nectar|reward|payment|change|cash|visa|mastercard|contactless|approved|thank you|store|receipt|transaction|vat|points|voucher|bag|carrier|loyalty|online|delivery|charge|fee|price match|you save|you've|spend|earn|bonus|offer|discount|saving|low every|previous|new points|order summary|slot time|groceries \(|your receipt|we took|thanks for)/i;
+  // Require a literal £ so negative amounts (-£14.30) and bare numbers don't match
+  const PRICE_LINE = /^(.*?)\s+£(\d+\.\d{2})\s*$/;
   const items = [];
+
   for (const raw of text.split(/\n/)) {
     const line = raw.trim();
     if (!line || line.length < 3 || SKIP.test(line)) continue;
-    const m = PRICE_END.exec(line);
+    const m = PRICE_LINE.exec(line);
     if (!m) continue;
-    const name  = m[1].trim().replace(/^[£*\s]+/, '').trim();
+
+    // Strip leading quantity ("1 ", "14 ", "2.14kg ") from the name
+    let name = m[1].trim()
+      .replace(/^\d+(\.\d+)?\s*(kg|g|ml|l|pints?)?\s+(?=\S)/, '')
+      .trim();
+
     const price = parseFloat(m[2]);
-    if (!name || price <= 0 || price > 300 || name.length < 2) continue;
+    if (!name || price <= 0 || price > 500 || name.length < 2) continue;
+    // Skip short all-caps section headers
     if (name === name.toUpperCase() && name.length < 20 && !/\d/.test(name)) continue;
-    if (/^\d+\s*[xX]/.test(name)) continue;
+
     items.push({ name, price });
   }
   return items;
