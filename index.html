@@ -310,22 +310,32 @@ async function parsePdf(file) {
     }
   }
 
-  // Merge wrapped item lines: a line with no £price that is followed by a
-  // continuation (starts lowercase or digit) gets joined to that next line.
-  // Non-item lines are flushed independently so they don't bleed into items.
+  // Merge wrapped item lines.
+  // Only lines starting with a digit go into the pending buffer — they're
+  // quantity prefixes ("1 ", "14 ", "2.14kg ") that belong with the next
+  // priced line. Header/footer lines ("Groceries (106 items)" etc.) start
+  // with uppercase and must go straight to output so they never get
+  // prepended to an item and trigger the SKIP filter.
   const mergedLines = [];
   let pending = '';
   for (const line of allLines) {
     const hasPriceAtEnd = /£\d+\.\d{2}\s*$/.test(line);
     if (hasPriceAtEnd) {
+      // Prepend any pending quantity/continuation fragment
       mergedLines.push(pending ? pending + ' ' + line : line);
       pending = '';
-    } else if (pending && /^[a-z0-9]/.test(line)) {
-      // Continuation of a wrapped item name (e.g. "x 28g" after "Pack 4")
+    } else if (pending && /^[a-z]/.test(line)) {
+      // Lowercase continuation of a wrapped name (e.g. "x 28g" after "Pack 4")
       pending += ' ' + line;
-    } else {
-      if (pending) mergedLines.push(pending); // flush standalone non-item line
+    } else if (/^\d/.test(line)) {
+      // Starts with a digit — quantity prefix; hold it for the next priced line
+      if (pending) mergedLines.push(pending);
       pending = line;
+    } else {
+      // Uppercase header/footer — send straight through, don't accumulate
+      if (pending) mergedLines.push(pending);
+      mergedLines.push(line);
+      pending = '';
     }
   }
   if (pending) mergedLines.push(pending);
