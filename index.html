@@ -964,7 +964,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
             const others = (raw || []).filter(n => n !== name);
             let line = `• ${itm.name}  £${share.toFixed(2)}`;
             if (others.length > 0) {
-              line += ` (shared with ${others.join(' & ')}, ÷${exp.length})`;
+              line += ` (shared with ${others.join(' & ')})`;
             }
             return line;
           }),
