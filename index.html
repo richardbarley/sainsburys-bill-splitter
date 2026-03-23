@@ -382,6 +382,15 @@ function countAssigned(items, assignments) {
   return (items || []).filter((_, i) => getAssignees(assignments, i).length > 0).length;
 }
 
+// Returns config.groups prepended with a synthetic "Everyone" group containing
+// all current people. Everyone is never stored — always computed fresh.
+function getEffectiveGroups(config) {
+  return [
+    { name: 'Everyone', members: [...(config.people || [])], builtin: true },
+    ...(config.groups || []),
+  ];
+}
+
 function calcTotals(items, assignments, groups) {
   const gmap = {};
   (groups || []).forEach(g => { gmap[g.name] = g.members || []; });
@@ -498,7 +507,7 @@ function App() {
   }
 
   async function saveBillAssignments(bill, newAssign) {
-    const newTotals = calcTotals(bill.items, newAssign, config.groups);
+    const newTotals = calcTotals(bill.items, newAssign, getEffectiveGroups(config));
     const patched   = { ...bill, assignments: newAssign, totals: newTotals };
     setActiveBill(patched);
     setBills(prev => prev.map(b => b.id === patched.id ? patched : b));
@@ -639,7 +648,7 @@ function BillsScreen({ bills, config, onOpenBill, onOpenSettings, onBillCreated,
 
   const allNames = useMemo(() => [
     ...(config.people || []),
-    ...(config.groups || []).map(g => g.name),
+    ...getEffectiveGroups(config).map(g => g.name),
   ], [config]);
 
   async function handleFile(file) {
@@ -868,7 +877,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
 
   const allNames = useMemo(() => [
     ...(config.people || []),
-    ...(config.groups || []).map(g => g.name),
+    ...getEffectiveGroups(config).map(g => g.name),
   ], [config]);
 
   const isDone      = !!bill.completedAt;
@@ -883,8 +892,8 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
   const assignees = getAssignees(bill.assignments, safeIdx);
 
   const totals = useMemo(
-    () => calcTotals(bill.items, bill.assignments, config.groups),
-    [bill.items, bill.assignments, config.groups]
+    () => calcTotals(bill.items, bill.assignments, getEffectiveGroups(config)),
+    [bill.items, bill.assignments, config.groups, config.people]
   );
 
   // Suggestion engine — runs once per bill load, uses all other bills as history
@@ -931,7 +940,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
   // ── SUMMARY VIEW ─────────────────────────────────────────
   if (view === 'summary') {
     const gmap = {};
-    (config.groups || []).forEach(g => { gmap[g.name] = g.members || []; });
+    getEffectiveGroups(config).forEach(g => { gmap[g.name] = g.members || []; });
     const unassTotal = bill.items
       .filter((_, i) => !getAssignees(bill.assignments, i).length)
       .reduce((s, x) => s + x.price, 0);
@@ -1267,7 +1276,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
                 )}
 
                 {/* Groups — visually separated */}
-                {(config.groups || []).length > 0 && (
+                {getEffectiveGroups(config).length > 0 && (
                   <>
                     <div style={{ display:'flex', alignItems:'center', gap:8, margin:'2px 0 10px' }}>
                       <div style={{ flex:1, height:1, background:'var(--border)' }} />
@@ -1275,7 +1284,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
                       <div style={{ flex:1, height:1, background:'var(--border)' }} />
                     </div>
                     <div style={{ display:'flex', flexWrap:'wrap', gap:10, justifyContent:'center' }}>
-                      {(config.groups || []).map(g => {
+                      {getEffectiveGroups(config).map(g => {
                         const sel = assignees.includes(g.name);
                         const c   = colorFor(g.name, allNames);
                         return (
@@ -1306,7 +1315,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
               {/* Assignment status / suggestion line — fixed height so nothing shifts */}
               {(() => {
                 const gmap2 = {};
-                (config.groups || []).forEach(g => { gmap2[g.name] = g.members || []; });
+                getEffectiveGroups(config).forEach(g => { gmap2[g.name] = g.members || []; });
                 const expanded = assignees.flatMap(a => gmap2[a]?.length ? gmap2[a] : [a]);
                 const suggestion = !isDone && assignees.length === 0 ? suggestions[safeIdx] : null;
                 return (
@@ -1538,6 +1547,7 @@ function GroupsTab({ config, saveConfig, showToast }) {
     e.preventDefault();
     const n = newGroup.trim();
     if (!n) return;
+    if (n.toLowerCase() === 'everyone') { showToast('"Everyone" is a built-in group'); return; }
     if ((config.groups || []).some(g => g.name === n)) { showToast('Already exists'); return; }
     await saveConfig({ ...config, groups: [...(config.groups || []), { name: n, members: [] }] });
     setNewGroup('');
@@ -1595,9 +1605,21 @@ function GroupsTab({ config, saveConfig, showToast }) {
         Groups let you assign an item to multiple people at once.
       </p>
 
-      {(config.groups || []).length === 0 && (
-        <p style={{ textAlign:'center', color:'var(--muted)', padding:'20px 0', fontSize:14 }}>No groups yet.</p>
-      )}
+      {/* Built-in Everyone group — always shown, read-only */}
+      <div style={{ marginBottom:8, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden', background:'#f8fafc' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px' }}>
+          <span style={{ fontSize:18 }}>👥</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:700, fontSize:14 }}>Everyone</div>
+            <div style={{ fontSize:12, color:'var(--muted)' }}>
+              {(config.people || []).length > 0
+                ? (config.people || []).join(', ')
+                : 'No people added yet'}
+            </div>
+          </div>
+          <span style={{ fontSize:11, color:'var(--muted)', fontStyle:'italic', background:'var(--border)', borderRadius:6, padding:'2px 6px' }}>built-in</span>
+        </div>
+      </div>
 
       {(config.groups || []).map(group => (
         <div key={group.name} style={{ marginBottom:8, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
