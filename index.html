@@ -431,7 +431,7 @@ function App() {
   const [ready,      setReady]      = useState(false);
   const [initError,  setInitError]  = useState(null);
   const [user,       setUser]       = useState(null);
-  const [config,     setConfig]     = useState({ people: [], groups: [] });
+  const [config,     setConfig]     = useState({ people: [], groups: [], peopleEmojis: {}, groupEmojis: {}, admins: [] });
   const [bills,      setBills]      = useState([]);
   const [screen,     setScreen]     = useState('bills');
   const [activeBill, setActiveBill] = useState(null);
@@ -475,7 +475,7 @@ function App() {
       _sb.from('config').select('*').eq('id', 1).single(),
     ]).then(([{ data: bRows }, { data: cfgRow }]) => {
       if (bRows)  setBills(bRows.map(rowToBill));
-      if (cfgRow) setConfig({ people: cfgRow.people || [], groups: cfgRow.groups || [] });
+      if (cfgRow) setConfig({ people: cfgRow.people || [], groups: cfgRow.groups || [], peopleEmojis: cfgRow.people_emojis || {}, groupEmojis: cfgRow.group_emojis || {}, admins: cfgRow.admins || [] });
     });
 
     const ch = _sb.channel('bs-collab')
@@ -495,7 +495,7 @@ function App() {
         setActiveBill(prev => (prev?.id === b.id ? b : prev));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'config' }, p => {
-        if (p.new) setConfig({ people: p.new.people || [], groups: p.new.groups || [] });
+        if (p.new) setConfig({ people: p.new.people || [], groups: p.new.groups || [], peopleEmojis: p.new.people_emojis || {}, groupEmojis: p.new.group_emojis || {}, admins: p.new.admins || [] });
       })
       .subscribe();
 
@@ -507,6 +507,9 @@ function App() {
     setConfig(cfg);
     await _sb.from('config').upsert({
       id: 1, people: cfg.people, groups: cfg.groups,
+      people_emojis: cfg.peopleEmojis || {},
+      group_emojis:  cfg.groupEmojis  || {},
+      admins:        cfg.admins       || [],
       updated_at: new Date().toISOString(),
     });
   }
@@ -646,10 +649,13 @@ function LoginScreen() {
 // ════════════════════════════════════════════════════════════
 // BILLS LIST SCREEN
 // ════════════════════════════════════════════════════════════
-function BillsScreen({ bills, config, onOpenBill, onOpenSettings, onBillCreated, completeBill, showToast }) {
+function BillsScreen({ bills, config, user, onOpenBill, onOpenSettings, onBillCreated, completeBill, deleteBill, showToast }) {
   const [uploading, setUploading] = useState(false);
   const [dragOver,  setDragOver]  = useState(false);
   const fileRef = useRef();
+
+  // Admin if admins list is empty (first-run) OR user's email is in the list
+  const isAdmin = !(config.admins || []).length || (config.admins || []).includes(user?.email);
 
   const allNames = useMemo(() => [
     ...(config.people || []),
@@ -686,67 +692,83 @@ function BillsScreen({ bills, config, onOpenBill, onOpenSettings, onBillCreated,
         <button className="btn btn-ghost btn-icon" onClick={onOpenSettings} title="Settings">⚙️</button>
       </div>
 
-      <div
-        className={'upload-area' + (dragOver ? ' drag' : '')}
-        onClick={() => !uploading && fileRef.current.click()}
-        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
-      >
-        {uploading
-          ? <><div className="spin" style={{ margin:'0 auto 10px' }} /><p>Parsing receipt…</p></>
-          : <><div style={{ fontSize:32 }}>📄</div>
-              <h3>Upload a Receipt</h3>
-              <p>Drag & drop a Sainsbury's PDF, or tap to browse</p></>
-        }
-        <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display:'none' }}
-          onChange={e => handleFile(e.target.files[0])} />
-      </div>
+      {(() => {
+        const active = bills.filter(b => !b.completedAt);
+        const done   = bills.filter(b =>  b.completedAt);
+        const hasActive = active.length > 0;
 
-      {bills.length === 0
-        ? <div className="empty">
-            <div className="eicon">🧾</div>
-            <h3>No receipts yet</h3>
-            <p>Upload a Sainsbury's PDF receipt above to get started.</p>
-          </div>
-        : (() => {
-            const active = bills.filter(b => !b.completedAt);
-            const done   = bills.filter(b =>  b.completedAt);
-            return <>
-              {active.length > 0 && <>
-                <div className="section-hdr">Active ({active.length})</div>
-                {active.map(bill => (
-                  <BillCard key={bill.id} bill={bill} allNames={allNames}
-                    onClick={() => onOpenBill(bill)}
-                    onComplete={() => completeBill(bill)} />
-                ))}
-              </>}
+        return <>
+          {/* Upload area — blocked when an active receipt exists */}
+          {!hasActive
+            ? <div
+                className={'upload-area' + (dragOver ? ' drag' : '')}
+                onClick={() => !uploading && fileRef.current.click()}
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
+              >
+                {uploading
+                  ? <><div className="spin" style={{ margin:'0 auto 10px' }} /><p>Parsing receipt…</p></>
+                  : <><div style={{ fontSize:32 }}>📄</div>
+                      <h3>Upload a Receipt</h3>
+                      <p>Drag & drop a Sainsbury's PDF, or tap to browse</p></>
+                }
+                <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display:'none' }}
+                  onChange={e => handleFile(e.target.files[0])} />
+              </div>
+            : <div style={{ margin:'12px 16px', background:'var(--primary-light)', border:'1px solid #bfdbfe', borderRadius:10, padding:'11px 16px', fontSize:13, color:'var(--primary)', textAlign:'center' }}>
+                Complete or delete the current receipt before uploading a new one
+              </div>
+          }
 
-              {done.length > 0 && <>
-                <div style={{
-                  display:'flex', alignItems:'center', gap:10,
-                  padding:'18px 20px 6px', color:'var(--muted)',
-                }}>
-                  <div style={{ flex:1, height:1, background:'var(--border)' }} />
-                  <span style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em' }}>
-                    Completed ({done.length})
-                  </span>
-                  <div style={{ flex:1, height:1, background:'var(--border)' }} />
-                </div>
-                {done.map(bill => (
-                  <BillCard key={bill.id} bill={bill} allNames={allNames}
-                    onClick={() => onOpenBill(bill)}
-                    muted />
-                ))}
-              </>}
-            </>;
-          })()
-      }
+          {bills.length === 0 && (
+            <div className="empty">
+              <div className="eicon">🧾</div>
+              <h3>No receipts yet</h3>
+              <p>Upload a Sainsbury's PDF receipt above to get started.</p>
+            </div>
+          )}
+
+          {/* Active receipt — prominent */}
+          {active.length > 0 && <>
+            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'14px 20px 6px' }}>
+              <div style={{ width:8, height:8, borderRadius:'50%', background:'var(--primary)', flexShrink:0 }} />
+              <span style={{ fontSize:12, fontWeight:800, color:'var(--primary)', textTransform:'uppercase', letterSpacing:'.06em' }}>
+                Current receipt
+              </span>
+            </div>
+            {active.map(bill => (
+              <BillCard key={bill.id} bill={bill} allNames={allNames}
+                onClick={() => onOpenBill(bill)}
+                onComplete={() => completeBill(bill)}
+                onDelete={isAdmin ? () => deleteBill(bill) : null}
+                highlight />
+            ))}
+          </>}
+
+          {/* Completed receipts — muted */}
+          {done.length > 0 && <>
+            <div style={{ display:'flex', alignItems:'center', gap:10, padding:'18px 20px 6px' }}>
+              <div style={{ flex:1, height:1, background:'var(--border)' }} />
+              <span style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:'var(--muted)' }}>
+                Completed ({done.length})
+              </span>
+              <div style={{ flex:1, height:1, background:'var(--border)' }} />
+            </div>
+            {done.map(bill => (
+              <BillCard key={bill.id} bill={bill} allNames={allNames}
+                onClick={() => onOpenBill(bill)}
+                onDelete={isAdmin ? () => deleteBill(bill) : null}
+                muted />
+            ))}
+          </>}
+        </>;
+      })()}
     </div>
   );
 }
 
-function BillCard({ bill, allNames, onClick, onComplete, muted }) {
+function BillCard({ bill, allNames, onClick, onComplete, onDelete, muted, highlight }) {
   const assigned  = countAssigned(bill.items, bill.assignments);
   const total     = bill.items.length;
   const pct       = total > 0 ? assigned / total : 0;
@@ -760,8 +782,11 @@ function BillCard({ bill, allNames, onClick, onComplete, muted }) {
       : <span className="badge badge-new">○ New</span>;
 
   return (
-    <div className="list-row" onClick={onClick}
-      style={{ flexDirection:'column', gap:8, alignItems:'stretch', opacity: muted ? 0.5 : 1 }}>
+    <div className="list-row" onClick={onClick} style={{
+      flexDirection:'column', gap:8, alignItems:'stretch',
+      opacity: muted ? 0.5 : 1,
+      borderLeft: highlight ? '3px solid var(--primary)' : undefined,
+    }}>
 
       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
         <div style={{ flex:1, minWidth:0 }}>
@@ -808,6 +833,18 @@ function BillCard({ bill, allNames, onClick, onComplete, muted }) {
                 {name} <strong style={{ color:'var(--text)', fontWeight:700 }}>£{amount.toFixed(2)}</strong>
               </span>
             ))}
+        </div>
+      )}
+
+      {/* Delete — admin only, shown via onDelete prop */}
+      {onDelete && (
+        <div style={{ borderTop:'1px solid var(--border)', paddingTop:6, textAlign:'right' }}>
+          <button
+            onClick={e => { e.stopPropagation(); if (confirm('Delete this receipt? This cannot be undone.')) onDelete(); }}
+            style={{ background:'none', border:'none', color:'var(--danger)', fontSize:12, cursor:'pointer', opacity:0.7, padding:'2px 4px' }}
+          >
+            🗑 Delete
+          </button>
         </div>
       )}
     </div>
