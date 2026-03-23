@@ -391,6 +391,11 @@ function getEffectiveGroups(config) {
   ];
 }
 
+// Returns the emoji assigned to a person or group, or '' if none set
+function getEmoji(config, name) {
+  return (config.peopleEmojis || {})[name] || (config.groupEmojis || {})[name] || '';
+}
+
 function calcTotals(items, assignments, groups) {
   const gmap = {};
   (groups || []).forEach(g => { gmap[g.name] = g.members || []; });
@@ -947,6 +952,41 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
 
     function goToItemEdit(idx) { setItemIdx(idx); setView('items'); }
 
+    async function sharePersonSummary(name, total, personItems, bill) {
+      const emoji = getEmoji(config, name);
+      const header = `🧾 Sainsbury's – ${bill.receiptDate || 'Receipt'}`;
+      const lines = [
+        header,
+        `${emoji ? emoji + ' ' : ''}${name}'s share: £${total.toFixed(2)}`,
+        '',
+        ...personItems.map(({ itm, share, others, exp }) => {
+          let line = `• ${itm.name}`;
+          line += `  £${share.toFixed(2)}`;
+          if (others.length > 0) {
+            line += ` (shared with ${others.join(' & ')}, ÷${exp.length})`;
+          }
+          return line;
+        }),
+        '',
+        `─────────────────`,
+        `Total: £${total.toFixed(2)}`,
+      ];
+      const text = lines.join('\n');
+      try {
+        if (navigator.share) {
+          await navigator.share({ text });
+        } else {
+          await navigator.clipboard.writeText(text);
+          showToast('Copied to clipboard');
+        }
+      } catch (e) {
+        if (e.name !== 'AbortError') {
+          await navigator.clipboard.writeText(text);
+          showToast('Copied to clipboard');
+        }
+      }
+    }
+
     return (
       <div style={{ display:'flex', flexDirection:'column', height:'100vh', height:'100dvh' }}>
         {/* Header */}
@@ -1006,8 +1046,15 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
                           style={{ display:'flex', alignItems:'center', gap:10, padding:'13px 20px', cursor:'pointer', background: isOpen ? '#f8fafc' : 'white' }}
                         >
                           <div style={{ width:10, height:10, borderRadius:'50%', background:c.bd, flexShrink:0 }} />
-                          <span style={{ flex:1, fontWeight:700, fontSize:15 }}>{name}</span>
+                          <span style={{ flex:1, fontWeight:700, fontSize:15 }}>
+                            {getEmoji(config, name) ? getEmoji(config, name) + ' ' : ''}{name}
+                          </span>
                           <span style={{ fontSize:16, fontWeight:800, color:'var(--primary)', marginRight:6 }}>£{amount.toFixed(2)}</span>
+                          <button
+                            onClick={e => { e.stopPropagation(); sharePersonSummary(name, amount, personItems, bill); }}
+                            style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', padding:'0 4px', lineHeight:1, flexShrink:0 }}
+                            title={`Share ${name}'s breakdown`}
+                          >📤</button>
                           <span style={{ color:'var(--muted)', fontSize:11, fontWeight:600 }}>{isOpen ? '▲' : '▼'}</span>
                         </div>
 
@@ -1231,7 +1278,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
               {(() => {
                 // Build group → members map so we can light up individuals via group selection
                 const gmap = {};
-                (config.groups || []).forEach(g => { gmap[g.name] = g.members || []; });
+                getEffectiveGroups(config).forEach(g => { gmap[g.name] = g.members || []; });
 
                 // A person chip is "selected" if directly assigned OR they're in an assigned group
                 function personSelected(name) {
@@ -1268,7 +1315,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
                           }}
                           onClick={() => toggle(name)}
                         >
-                          {name}{viaGrp ? ' ·' : ''}
+                          {getEmoji(config, name) ? getEmoji(config, name) + ' ' : ''}{name}{viaGrp ? ' ·' : ''}
                         </button>
                       );
                     })}
@@ -1301,7 +1348,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
                             }}
                             onClick={() => toggle(g.name)}
                           >
-                            👥 {g.name}
+                            {getEmoji(config, g.name) || '👥'} {g.name}
                           </button>
                         );
                       })}
@@ -1488,9 +1535,21 @@ function PeopleTab({ config, saveConfig, showToast }) {
         const isEditing = editingName === name;
         return (
           <div key={name} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid var(--border)' }}>
-            {/* Avatar */}
-            <div style={{ width:34, height:34, borderRadius:'50%', flexShrink:0, background:c.bg, border:'2px solid '+c.bd, display:'flex', alignItems:'center', justifyContent:'center', color:c.fg, fontWeight:700, fontSize:14 }}>
-              {(isEditing ? editValue || name : name)[0].toUpperCase()}
+            {/* Emoji picker — tap to set, shows initial if none */}
+            <div
+              style={{ width:36, height:36, borderRadius:10, flexShrink:0, background:c.bg, border:'2px solid '+c.bd, display:'flex', alignItems:'center', justifyContent:'center', position:'relative', overflow:'hidden' }}
+              title="Tap to set emoji"
+            >
+              <input
+                type="text"
+                value={getEmoji(config, name)}
+                onChange={async e => {
+                  const val = e.target.value;
+                  await saveConfig({ ...config, peopleEmojis: { ...(config.peopleEmojis || {}), [name]: val } });
+                }}
+                style={{ position:'absolute', inset:0, width:'100%', height:'100%', textAlign:'center', fontSize:20, border:'none', background:'transparent', cursor:'pointer', padding:0, color: getEmoji(config, name) ? 'inherit' : c.fg, fontWeight:700, opacity: getEmoji(config, name) ? 1 : 0.5 }}
+                placeholder={(isEditing ? editValue || name : name)[0].toUpperCase()}
+              />
             </div>
 
             {isEditing
@@ -1608,7 +1667,13 @@ function GroupsTab({ config, saveConfig, showToast }) {
       {/* Built-in Everyone group — always shown, read-only */}
       <div style={{ marginBottom:8, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden', background:'#f8fafc' }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px' }}>
-          <span style={{ fontSize:18 }}>👥</span>
+          <input
+            type="text"
+            value={getEmoji(config, 'Everyone')}
+            onChange={async e => await saveConfig({ ...config, groupEmojis: { ...(config.groupEmojis || {}), Everyone: e.target.value } })}
+            style={{ width:36, height:36, textAlign:'center', fontSize:22, border:'1px dashed var(--border)', borderRadius:8, background:'white', cursor:'pointer', padding:0, flexShrink:0 }}
+            placeholder="👥"
+          />
           <div style={{ flex:1 }}>
             <div style={{ fontWeight:700, fontSize:14 }}>Everyone</div>
             <div style={{ fontSize:12, color:'var(--muted)' }}>
@@ -1627,7 +1692,14 @@ function GroupsTab({ config, saveConfig, showToast }) {
             style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px', cursor: editingGroup === group.name ? 'default' : 'pointer', background: expanded === group.name ? '#f8fafc' : 'white' }}
             onClick={() => editingGroup !== group.name && setExpanded(expanded === group.name ? null : group.name)}
           >
-            <span style={{ fontSize:18 }}>👥</span>
+            <input
+              type="text"
+              value={getEmoji(config, group.name)}
+              onChange={async e => { e.stopPropagation(); await saveConfig({ ...config, groupEmojis: { ...(config.groupEmojis || {}), [group.name]: e.target.value } }); }}
+              onClick={e => e.stopPropagation()}
+              style={{ width:36, height:36, textAlign:'center', fontSize:22, border:'1px dashed var(--border)', borderRadius:8, background:'white', cursor:'pointer', padding:0, flexShrink:0 }}
+              placeholder="👥"
+            />
 
             {editingGroup === group.name
               /* Rename mode */
