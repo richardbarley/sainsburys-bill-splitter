@@ -953,26 +953,26 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
     function goToItemEdit(idx) { setItemIdx(idx); setView('items'); }
 
     async function sharePersonSummary(name, total, personItems, bill) {
-      const emoji = getEmoji(config, name);
-      const header = `🧾 Sainsbury's – ${bill.receiptDate || 'Receipt'}`;
-      const lines = [
-        header,
-        `${emoji ? emoji + ' ' : ''}${name}'s share: £${total.toFixed(2)}`,
-        '',
-        ...personItems.map(({ itm, share, others, exp }) => {
-          let line = `• ${itm.name}`;
-          line += `  £${share.toFixed(2)}`;
-          if (others.length > 0) {
-            line += ` (shared with ${others.join(' & ')}, ÷${exp.length})`;
-          }
-          return line;
-        }),
-        '',
-        `─────────────────`,
-        `Total: £${total.toFixed(2)}`,
-      ];
-      const text = lines.join('\n');
       try {
+        const emoji = getEmoji(config, name);
+        const lines = [
+          `🧾 Sainsbury's – ${bill.receiptDate || 'Receipt'}`,
+          `${emoji ? emoji + ' ' : ''}${name}'s share: £${total.toFixed(2)}`,
+          '',
+          ...personItems.map(({ itm, share, exp, raw }) => {
+            // 'others' was not stored on personItems — compute it here
+            const others = (raw || []).filter(n => n !== name);
+            let line = `• ${itm.name}  £${share.toFixed(2)}`;
+            if (others.length > 0) {
+              line += ` (shared with ${others.join(' & ')}, ÷${exp.length})`;
+            }
+            return line;
+          }),
+          '',
+          `─────────────────`,
+          `Total: £${total.toFixed(2)}`,
+        ];
+        const text = lines.join('\n');
         if (navigator.share) {
           await navigator.share({ text });
         } else {
@@ -980,10 +980,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
           showToast('Copied to clipboard');
         }
       } catch (e) {
-        if (e.name !== 'AbortError') {
-          await navigator.clipboard.writeText(text);
-          showToast('Copied to clipboard');
-        }
+        if (e.name !== 'AbortError') showToast('Could not share — try again');
       }
     }
 
