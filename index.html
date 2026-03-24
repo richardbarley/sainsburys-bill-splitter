@@ -536,6 +536,16 @@ function App() {
     showToast('✅ Receipt marked as complete');
   }
 
+  async function uncompleteBill(bill) {
+    const patched = { ...bill, completedAt: null, completedBy: null };
+    setActiveBill(patched);
+    setBills(prev => prev.map(b => b.id === patched.id ? patched : b));
+    await _sb.from('bill_history').update({
+      completed_at: null, completed_by: null, updated_at: new Date().toISOString(),
+    }).eq('id', bill.id);
+    showToast('↩ Receipt reopened for editing');
+  }
+
   async function deleteBill(bill) {
     await _sb.from('bill_history').delete().eq('id', bill.id);
     setBills(prev => prev.filter(b => b.id !== bill.id));
@@ -564,7 +574,7 @@ function App() {
 
   if (!user) return <LoginScreen />;
 
-  const ctx = { user, config, bills, showToast, saveConfig, saveBillAssignments, completeBill, deleteBill };
+  const ctx = { user, config, bills, showToast, saveConfig, saveBillAssignments, completeBill, uncompleteBill, deleteBill };
 
   return (
     <>
@@ -649,7 +659,7 @@ function LoginScreen() {
 // ════════════════════════════════════════════════════════════
 // BILLS LIST SCREEN
 // ════════════════════════════════════════════════════════════
-function BillsScreen({ bills, config, user, onOpenBill, onOpenSettings, onBillCreated, completeBill, deleteBill, showToast }) {
+function BillsScreen({ bills, config, user, onOpenBill, onOpenSettings, onBillCreated, completeBill, uncompleteBill, deleteBill, showToast }) {
   const [uploading, setUploading] = useState(false);
   const [dragOver,  setDragOver]  = useState(false);
   const fileRef = useRef();
@@ -758,6 +768,7 @@ function BillsScreen({ bills, config, user, onOpenBill, onOpenSettings, onBillCr
             {done.map(bill => (
               <BillCard key={bill.id} bill={bill} allNames={allNames}
                 onClick={() => onOpenBill(bill)}
+                onUncomplete={isAdmin ? () => uncompleteBill(bill) : null}
                 onDelete={isAdmin ? () => deleteBill(bill) : null}
                 muted />
             ))}
@@ -768,7 +779,7 @@ function BillsScreen({ bills, config, user, onOpenBill, onOpenSettings, onBillCr
   );
 }
 
-function BillCard({ bill, allNames, onClick, onComplete, onDelete, muted, highlight }) {
+function BillCard({ bill, allNames, onClick, onComplete, onUncomplete, onDelete, muted, highlight }) {
   const assigned  = countAssigned(bill.items, bill.assignments);
   const total     = bill.items.length;
   const pct       = total > 0 ? assigned / total : 0;
@@ -836,15 +847,25 @@ function BillCard({ bill, allNames, onClick, onComplete, onDelete, muted, highli
         </div>
       )}
 
-      {/* Delete — admin only, shown via onDelete prop */}
-      {onDelete && (
-        <div style={{ borderTop:'1px solid var(--border)', paddingTop:6, textAlign:'right' }}>
-          <button
-            onClick={e => { e.stopPropagation(); if (confirm('Delete this receipt? This cannot be undone.')) onDelete(); }}
-            style={{ background:'none', border:'none', color:'var(--danger)', fontSize:12, cursor:'pointer', opacity:0.7, padding:'2px 4px' }}
-          >
-            🗑 Delete
-          </button>
+      {/* Admin actions — reopen / delete */}
+      {(onUncomplete || onDelete) && (
+        <div style={{ borderTop:'1px solid var(--border)', paddingTop:6, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          {onUncomplete ? (
+            <button
+              onClick={e => { e.stopPropagation(); if (confirm('Reopen this receipt for editing?')) onUncomplete(); }}
+              style={{ background:'none', border:'none', color:'var(--primary)', fontSize:12, cursor:'pointer', padding:'2px 4px' }}
+            >
+              ↩ Reopen
+            </button>
+          ) : <span />}
+          {onDelete && (
+            <button
+              onClick={e => { e.stopPropagation(); if (confirm('Delete this receipt? This cannot be undone.')) onDelete(); }}
+              style={{ background:'none', border:'none', color:'var(--danger)', fontSize:12, cursor:'pointer', opacity:0.7, padding:'2px 4px' }}
+            >
+              🗑 Delete
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -910,7 +931,7 @@ function computeSuggestions(pastBills, currentBill) {
 // ════════════════════════════════════════════════════════════
 // BILL DETAIL SCREEN  (Items tab + Summary tab)
 // ════════════════════════════════════════════════════════════
-function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignments, completeBill, deleteBill, showToast }) {
+function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignments, completeBill, uncompleteBill, deleteBill, showToast }) {
   const [itemIdx,       setItemIdx]       = useState(0);
   const [view,          setView]          = useState('items'); // 'items' | 'summary'
   const [summaryTab,    setSummaryTab]    = useState('person'); // 'person' | 'item'
@@ -923,6 +944,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
   ], [config]);
 
   const isDone      = !!bill.completedAt;
+  const isAdmin     = !(config.admins || []).length || (config.admins || []).includes(user?.email);
   const total       = bill.items.length;
   const assigned    = countAssigned(bill.items, bill.assignments);
   const allAssigned = assigned === total && total > 0;
@@ -1207,6 +1229,12 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
               </button>
             )}
           </>}
+          {isDone && isAdmin && (
+            <button className="btn btn-ghost btn-full" style={{ fontSize:14 }}
+              onClick={() => { if (confirm('Reopen this receipt for editing?')) uncompleteBill(bill); }}>
+              ↩ Reopen for Editing
+            </button>
+          )}
           <button
             onClick={async () => { if (confirm('Delete this receipt? This cannot be undone.')) { await deleteBill(bill); } }}
             style={{ background:'none', border:'none', color:'var(--danger)', fontSize:13, cursor:'pointer', opacity:0.7, padding:'2px 0' }}>
