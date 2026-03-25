@@ -576,25 +576,70 @@ function HouseholdInsights({ bills, config, stats, onSelectPerson, onBack }) {
   );
 }
 
+// Parse "22 March 2026" → Date (returns null if unparseable)
+function parseReceiptDateStr(str) {
+  if (!str) return null;
+  const m = str.match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/i);
+  if (!m) return null;
+  const mo = MONTH_MAP[m[2].toLowerCase()];
+  if (!mo) return null;
+  return new Date(parseInt(m[3]), mo - 1, parseInt(m[1]));
+}
+
 function PersonInsights({ person, stats, bills, config, onBack }) {
   const { personItems, perPersonCats } = stats;
   const items  = personItems[person] || [];
   const emoji  = getEmoji(config, person);
 
+  // Group expansion map
+  const gmap = {};
+  getEffectiveGroups(config).forEach(g => { gmap[g.name] = g.members || []; });
+
   const total       = items.reduce((s, it) => s + it.share, 0);
   const soloTotal   = items.filter(it => it.solo).reduce((s, it) => s + it.share, 0);
   const sharedTotal = total - soloTotal;
 
-  // Top items by cumulative spend (aggregated across bills)
+  // Per-bill spend for this person
+  const perBill = bills.map(bill => {
+    let spend = 0;
+    bill.items.forEach((item, idx) => {
+      const raw      = getAssignees(bill.assignments, idx);
+      const expanded = [...new Set(raw.flatMap(n => gmap[n] || [n]))];
+      if (!expanded.includes(person)) return;
+      spend += item.price / expanded.length;
+    });
+    const date = parseReceiptDateStr(bill.receiptDate);
+    return { bill, spend, date };
+  }).filter(x => x.spend > 0);
+
+  const shopCount   = perBill.length;
+  const avgPerShop  = shopCount > 0 ? total / shopCount : 0;
+  const priciest    = perBill.reduce((a, b) => b.spend > a.spend ? b : a, perBill[0]);
+  const cheapest    = perBill.reduce((a, b) => b.spend < a.spend ? b : a, perBill[0]);
+
+  // Weekly average: total spend ÷ number of distinct weeks spanned
+  let weeklyAvg = null;
+  const datedBills = perBill.filter(x => x.date);
+  if (datedBills.length >= 2) {
+    const ms     = datedBills.map(x => x.date.getTime());
+    const spanMs = Math.max(...ms) - Math.min(...ms);
+    const weeks  = spanMs / (7 * 24 * 60 * 60 * 1000);
+    if (weeks >= 1) weeklyAvg = total / weeks;
+  }
+
+  // Top items by cumulative spend
   const itemMap = {};
   items.forEach(it => {
-    itemMap[it.name] = itemMap[it.name] || { name:it.name, total:0, count:0, solo:0 };
+    itemMap[it.name] = itemMap[it.name] || { name:it.name, total:0, count:0 };
     itemMap[it.name].total += it.share;
     itemMap[it.name].count++;
-    if (it.solo) itemMap[it.name].solo++;
   });
-  const topItems    = Object.values(itemMap).sort((a, b) => b.total - a.total).slice(0, 10);
+  const allItems     = Object.values(itemMap).sort((a, b) => b.total - a.total);
+  const topItems     = allItems.slice(0, 10);
   const maxItemTotal = topItems[0]?.total || 0.01;
+  const mostFrequent = [...allItems].sort((a, b) => b.count - a.count)[0];
+  const uniqueItems  = allItems.length;
+  const biggestItem  = items.reduce((a, b) => b.share > a.share ? b : a, items[0]);
 
   // Sharing partners
   const sharePartners = {};
@@ -604,10 +649,12 @@ function PersonInsights({ person, stats, bills, config, onBack }) {
   const topPartners = Object.entries(sharePartners).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
   // Categories
-  const myCats  = Object.entries(perPersonCats[person] || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
-  const maxCat  = myCats[0]?.[1] || 0.01;
+  const myCats = Object.entries(perPersonCats[person] || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const maxCat = myCats[0]?.[1] || 0.01;
+  const topCat = myCats[0]?.[0];
 
-  const sectionHead = { fontSize:12, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:10 };
+  const sh  = { fontSize:12, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:10 };
+  const row = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 0', borderBottom:'1px solid var(--border)' };
 
   return (
     <div>
@@ -618,13 +665,14 @@ function PersonInsights({ person, stats, bills, config, onBack }) {
       </div>
 
       <div style={{ padding:'4px 16px 40px' }}>
-        {/* Summary cards */}
+
+        {/* Top-line summary cards */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, margin:'12px 0 24px' }}>
           {[
-            { label:'Total spent',   value:`£${total.toFixed(2)}` },
-            { label:'Items bought',  value: items.length },
-            { label:'Paid solo',     value:`£${soloTotal.toFixed(2)}` },
-            { label:'Paid shared',   value:`£${sharedTotal.toFixed(2)}` },
+            { label:'Total spent',    value:`£${total.toFixed(2)}` },
+            { label:'Shops',          value: shopCount },
+            { label:'Avg per shop',   value:`£${avgPerShop.toFixed(2)}` },
+            { label:'Unique items',   value: uniqueItems },
           ].map(({ label, value }) => (
             <div key={label} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 12px' }}>
               <div style={{ fontSize:20, fontWeight:800 }}>{value}</div>
@@ -633,23 +681,87 @@ function PersonInsights({ person, stats, bills, config, onBack }) {
           ))}
         </div>
 
-        {/* Solo vs shared split bar */}
+        {/* Shop breakdown */}
+        {shopCount > 0 && (
+          <div style={{ marginBottom:28 }}>
+            <div style={sh}>Shop breakdown</div>
+            {weeklyAvg !== null && (
+              <div style={row}>
+                <span style={{ fontSize:13, color:'var(--muted)' }}>Avg per week</span>
+                <span style={{ fontSize:15, fontWeight:700 }}>£{weeklyAvg.toFixed(2)}</span>
+              </div>
+            )}
+            <div style={row}>
+              <span style={{ fontSize:13, color:'var(--muted)' }}>Avg per shop</span>
+              <span style={{ fontSize:15, fontWeight:700 }}>£{avgPerShop.toFixed(2)}</span>
+            </div>
+            {priciest && (
+              <div style={row}>
+                <div>
+                  <div style={{ fontSize:13, color:'var(--muted)' }}>Most expensive shop</div>
+                  {priciest.bill.receiptDate && <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>{priciest.bill.receiptDate}</div>}
+                </div>
+                <span style={{ fontSize:15, fontWeight:700, color:'var(--danger)' }}>£{priciest.spend.toFixed(2)}</span>
+              </div>
+            )}
+            {cheapest && shopCount > 1 && (
+              <div style={row}>
+                <div>
+                  <div style={{ fontSize:13, color:'var(--muted)' }}>Cheapest shop</div>
+                  {cheapest.bill.receiptDate && <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>{cheapest.bill.receiptDate}</div>}
+                </div>
+                <span style={{ fontSize:15, fontWeight:700, color:'var(--success)' }}>£{cheapest.spend.toFixed(2)}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Highlights */}
+        {items.length > 0 && (
+          <div style={{ marginBottom:28 }}>
+            <div style={sh}>Highlights</div>
+            {mostFrequent && mostFrequent.count > 1 && (
+              <div style={row}>
+                <div>
+                  <div style={{ fontSize:13, color:'var(--muted)' }}>Most frequently bought</div>
+                  <div style={{ fontSize:13, fontWeight:600, marginTop:2 }}>{mostFrequent.name}</div>
+                </div>
+                <span style={{ fontSize:13, color:'var(--muted)', flexShrink:0, marginLeft:8 }}>{mostFrequent.count}×</span>
+              </div>
+            )}
+            {biggestItem && (
+              <div style={row}>
+                <div>
+                  <div style={{ fontSize:13, color:'var(--muted)' }}>Biggest single purchase</div>
+                  <div style={{ fontSize:13, fontWeight:600, marginTop:2 }}>{biggestItem.name}</div>
+                </div>
+                <span style={{ fontSize:15, fontWeight:700, flexShrink:0, marginLeft:8 }}>£{biggestItem.share.toFixed(2)}</span>
+              </div>
+            )}
+            {topCat && (
+              <div style={row}>
+                <span style={{ fontSize:13, color:'var(--muted)' }}>Favourite category</span>
+                <span style={{ fontSize:13, fontWeight:700 }}>{topCat}</span>
+              </div>
+            )}
+            <div style={row}>
+              <span style={{ fontSize:13, color:'var(--muted)' }}>Solo vs shared</span>
+              <span style={{ fontSize:13, fontWeight:700 }}>{Math.round(soloTotal/total*100)}% solo</span>
+            </div>
+          </div>
+        )}
+
+        {/* Solo vs shared bar */}
         {total > 0 && (
           <div style={{ marginBottom:28 }}>
-            <div style={sectionHead}>Solo vs shared</div>
+            <div style={sh}>Solo vs shared spend</div>
             <div style={{ display:'flex', height:14, borderRadius:7, overflow:'hidden', gap:2, marginBottom:8 }}>
               {soloTotal > 0 && <div style={{ flex:soloTotal, background:'var(--primary)', borderRadius:'7px 0 0 7px' }} />}
               {sharedTotal > 0 && <div style={{ flex:sharedTotal, background:'var(--success)', borderRadius: soloTotal > 0 ? '0 7px 7px 0' : 7 }} />}
             </div>
             <div style={{ display:'flex', gap:20, fontSize:13 }}>
-              <span>
-                <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:'var(--primary)', marginRight:5 }} />
-                Solo {total > 0 ? Math.round(soloTotal/total*100) : 0}% · £{soloTotal.toFixed(2)}
-              </span>
-              <span>
-                <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:'var(--success)', marginRight:5 }} />
-                Shared {total > 0 ? Math.round(sharedTotal/total*100) : 0}% · £{sharedTotal.toFixed(2)}
-              </span>
+              <span><span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:'var(--primary)', marginRight:5 }} />Solo £{soloTotal.toFixed(2)}</span>
+              <span><span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:'var(--success)', marginRight:5 }} />Shared £{sharedTotal.toFixed(2)}</span>
             </div>
           </div>
         )}
@@ -657,7 +769,7 @@ function PersonInsights({ person, stats, bills, config, onBack }) {
         {/* Sharing partners */}
         {topPartners.length > 0 && (
           <div style={{ marginBottom:28 }}>
-            <div style={sectionHead}>Most shared with</div>
+            <div style={sh}>Most shared with</div>
             <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
               {topPartners.map(([p, count]) => {
                 const pe = getEmoji(config, p);
@@ -675,8 +787,8 @@ function PersonInsights({ person, stats, bills, config, onBack }) {
         {/* Top items by spend */}
         {topItems.length > 0 && (
           <div style={{ marginBottom:28 }}>
-            <div style={sectionHead}>Top items by spend</div>
-            {topItems.map((it, i) => (
+            <div style={sh}>Top items by spend</div>
+            {topItems.map(it => (
               <div key={it.name} style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 0', borderBottom:'1px solid var(--border)' }}>
                 <span style={{ fontSize:13, flex:1, color:'var(--text)' }}>{it.name}</span>
                 {it.count > 1 && <span style={{ fontSize:11, color:'var(--muted)', flexShrink:0 }}>{it.count}×</span>}
@@ -690,7 +802,7 @@ function PersonInsights({ person, stats, bills, config, onBack }) {
         {/* Category breakdown */}
         {myCats.length > 0 && (
           <div>
-            <div style={sectionHead}>Spending by category</div>
+            <div style={sh}>Spending by category</div>
             {myCats.map(([cat, catTotal], i) => (
               <div key={cat} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:'1px solid var(--border)' }}>
                 <div style={{ width:9, height:9, borderRadius:'50%', background:CHART_CAT_COLORS[i%CHART_CAT_COLORS.length], flexShrink:0 }} />
