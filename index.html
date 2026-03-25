@@ -26,6 +26,21 @@
       --radius:        12px;
     }
 
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:            #0f172a;
+        --surface:       #1e293b;
+        --border:        #334155;
+        --text:          #f1f5f9;
+        --muted:         #94a3b8;
+        --primary:       #60a5fa;
+        --primary-light: #1e3a5f;
+        --success:       #4ade80;
+        --success-light: #14532d;
+        --danger:        #f87171;
+      }
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
       background: var(--bg);
@@ -80,7 +95,7 @@
       font-size: 15px; color: var(--text); background: var(--bg);
       outline: none; transition: border-color .15s;
     }
-    .input:focus { border-color: var(--primary); background: #fff; }
+    .input:focus { border-color: var(--primary); background: var(--surface); }
     .label {
       display: block; font-size: 12px; font-weight: 600; color: var(--muted);
       margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em;
@@ -95,7 +110,7 @@
       transition: all .12s; user-select: none; -webkit-user-select: none;
     }
     .chip:active { transform: scale(.94); }
-    .chip-off { background: #f1f5f9; border-color: #e2e8f0; color: #94a3b8; }
+    .chip-off { background: var(--bg); border-color: var(--border); color: var(--muted); }
 
     /* ── Badges ── */
     .badge {
@@ -105,9 +120,12 @@
     }
     .badge-done    { background: var(--success-light); color: var(--success); }
     .badge-wip     { background: var(--primary-light);  color: var(--primary); }
-    .badge-new     { background: #f1f5f9; color: var(--muted); }
+    .badge-new     { background: var(--bg); color: var(--muted); }
     .badge-active  { background: var(--success-light); color: var(--success); }
     .badge-pending { background: #fef3c7; color: #92400e; }
+    @media (prefers-color-scheme: dark) {
+      .badge-pending { background: #451a03; color: #fbbf24; }
+    }
 
     /* ── Progress ── */
     .prog-bar { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
@@ -159,7 +177,7 @@
     /* ── Toast ── */
     .toast {
       position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
-      background: #1e293b; color: #fff; padding: 10px 20px;
+      background: var(--text); color: var(--surface); padding: 10px 20px;
       border-radius: 8px; font-size: 14px; font-weight: 500;
       white-space: nowrap; z-index: 400; pointer-events: none;
       box-shadow: 0 4px 16px rgba(0,0,0,.25);
@@ -478,10 +496,10 @@ function InsightsScreen({ bills, config, onBack }) {
   }
 
   return <HouseholdInsights bills={completedBills} config={config} stats={stats}
-    onSelectPerson={setSelectedPerson} />;
+    onSelectPerson={setSelectedPerson} onBack={onBack} />;
 }
 
-function HouseholdInsights({ bills, config, stats, onSelectPerson }) {
+function HouseholdInsights({ bills, config, stats, onSelectPerson, onBack }) {
   const { personTotals, catTotals } = stats;
   const people = config.people || [];
 
@@ -499,7 +517,7 @@ function HouseholdInsights({ bills, config, stats, onSelectPerson }) {
   return (
     <div>
       <div className="header">
-        <div style={{ width:40 }} />
+        <button className="btn btn-ghost btn-icon" onClick={onBack}>←</button>
         <span className="header-title">📊 Insights</span>
         <div style={{ width:40 }} />
       </div>
