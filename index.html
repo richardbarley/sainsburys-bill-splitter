@@ -369,6 +369,325 @@ function parseReceiptItems(text) {
   return items;
 }
 
+// ── Item categoriser ──────────────────────────────────────────
+const CAT_RULES = [
+  ['Dairy & Eggs',         /\bmilk\b|cheese|butter|yogur|fromage|creme fraiche|\bcream\b(?!.*crisp)|egg\b|margarin|cheddar|brie|mozzarella|stilton|oat milk|soy milk/i],
+  ['Meat & Fish',          /chicken|beef|pork|lamb|\bfish\b|salmon|tuna|\bcod\b|steak|mince|bacon|sausag|\bham\b|turkey|prawn|shrimp|fillet|brisket|mackerel|haddock|kipper|scallop|mussel/i],
+  ['Bakery',               /\bbread\b|loaf|\broll\b|bagel|croissant|muffin|\bcake\b|scone|pastry|doughnut|baguette|sourdough|brioche|crumpet|waffle|\bwrap\b|pitta|flatbread|naan|tortilla/i],
+  ['Drinks',               /\bjuice\b|squash|\bcola\b|\bbeer\b|wine|lemonade|coffee|espresso|\btea\b|smoothie|cordial|cider|vodka|prosecco|\bgin\b|fizzy|tonic|sparkling|still water|oat drink/i],
+  ['Snacks & Treats',      /crisp|chocolate|biscuit|sweet\b|candy|\bnuts?\b|popcorn|pretzel|cracker|flapjack|pick up|kitkat|twix|haribo|chew|choc|brownie|browni|cookie|shortbread|wafer|cereal bar/i],
+  ['Fruit & Veg',          /apple|banana|carrot|potato|tomato|lettuce|onion|pepper|cucumber|salad|spinach|broccoli|mushroom|garlic|lemon|lime|\borange\b|grape|strawberr|raspberr|blueberr|berry|avocado|courgette|aubergine|leek|celery|\bpeas?\b|cauliflower|kale|cabbage|sweetcorn|parsnip|beetroot|mango|pineapple|peach|plum|cherry|watermelon|melon|ginger|chilli/i],
+  ['Frozen',               /frozen|ice cream|sorbet|\bice loll|gelato/i],
+  ['Tins & Jars',          /\btin\b|tinned|canned|baked bean|pasta sauce|pesto|\bjam\b|marmalade|honey|pickle|chutney|relish|passata|coconut milk|chopped tomato/i],
+  ['Breakfast Cereals',    /cereal|porridge|\boats?\b|granola|muesli|weetabix|cornflake|shreddies|crunchy nut|bran flake|rice krispie/i],
+  ['Pasta, Rice & Grains', /\bpasta\b|risotto|\brice\b|noodle|couscous|quinoa|\blentil\b|chickpea|spaghetti|penne|fusilli|linguine|tagliatelle/i],
+  ['Condiments & Oils',    /ketchup|mayonnais|mustard|vinegar|\boil\b|dressing|seasoning|\bspice\b|\bherb\b|stock cube|gravy|soy sauce|worcester|tabasco|sriracha|teriyaki/i],
+  ['Toiletries',           /shampoo|toothpaste|toothbrush|deodorant|conditioner|shower gel|moisturis|face wash|razor|toilet roll|toilet tissue|cotton|bodywash|skincare|lotion|perfume|cologne|lip balm|sunscreen|hand wash/i],
+  ['Cleaning & Household', /washing up|detergent|bleach|cleaner|wipes?|dishwash|laundry|fabric cond|kitchen roll|bin bag|cling film|foil|parchment/i],
+];
+
+function categorizeItem(name) {
+  for (const [cat, re] of CAT_RULES) {
+    if (re.test(name)) return cat;
+  }
+  return 'Other';
+}
+
+// Palette for charts
+const CHART_PERSON_COLORS = ['#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#8b5cf6','#06b6d4'];
+const CHART_CAT_COLORS    = ['#6366f1','#ec4899','#10b981','#f59e0b','#3b82f6','#ef4444','#8b5cf6','#06b6d4','#14b8a6','#f97316','#84cc16','#94a3b8'];
+
+// Simple CSS bar (no SVG dependency)
+function ChartBar({ value, max, color = 'var(--primary)', height = 7 }) {
+  const pct = max > 0 ? Math.max(3, (value / max) * 100) : 0;
+  return (
+    <div style={{ flex:1, height, background:'var(--border)', borderRadius:height/2, overflow:'hidden' }}>
+      <div style={{ width: pct + '%', height:'100%', background: color, borderRadius: height/2, transition:'width .4s ease' }} />
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// INSIGHTS SCREEN
+// ════════════════════════════════════════════════════════════
+function InsightsScreen({ bills, config, onBack }) {
+  const [selectedPerson, setSelectedPerson] = useState(null);
+  const completedBills = bills.filter(b => b.completedAt);
+  const people = config.people || [];
+
+  // Build group expansion map from all groups incl Everyone
+  const gmap = {};
+  getEffectiveGroups(config).forEach(g => { gmap[g.name] = g.members || []; });
+
+  // Aggregate across completed bills
+  const stats = useMemo(() => {
+    const personTotals = {};
+    const personItems  = {};   // {name: [{name, price, share, solo, sharedWith}]}
+    const catTotals    = {};
+    const perPersonCats = {};
+    people.forEach(p => { personTotals[p] = 0; personItems[p] = []; perPersonCats[p] = {}; });
+
+    completedBills.forEach(bill => {
+      bill.items.forEach((item, idx) => {
+        const raw = getAssignees(bill.assignments, idx);
+        if (!raw.length) return;
+        const expanded = [...new Set(raw.flatMap(n => gmap[n] || [n]))];
+        if (!expanded.length) return;
+
+        const share = item.price / expanded.length;
+        const cat   = categorizeItem(item.name);
+        catTotals[cat] = (catTotals[cat] || 0) + item.price;
+
+        expanded.forEach(person => {
+          if (!people.includes(person)) return;
+          personTotals[person] = (personTotals[person] || 0) + share;
+          (personItems[person] = personItems[person] || []).push({
+            name: item.name, price: item.price, share,
+            solo: expanded.length === 1,
+            sharedWith: expanded.filter(n => n !== person),
+          });
+          perPersonCats[person] = perPersonCats[person] || {};
+          perPersonCats[person][cat] = (perPersonCats[person][cat] || 0) + share;
+        });
+      });
+    });
+
+    return { personTotals, personItems, catTotals, perPersonCats };
+  }, [completedBills.length, config]);
+
+  if (completedBills.length === 0) {
+    return (
+      <div>
+        <div className="header">
+          <button className="btn btn-ghost btn-icon" onClick={onBack}>←</button>
+          <span className="header-title">Insights</span>
+          <div style={{ width:40 }} />
+        </div>
+        <div className="empty">
+          <div className="eicon">📊</div>
+          <h3>No data yet</h3>
+          <p>Insights appear once you've completed at least one receipt.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (selectedPerson) {
+    return <PersonInsights person={selectedPerson} stats={stats} bills={completedBills}
+      config={config} onBack={() => setSelectedPerson(null)} />;
+  }
+
+  return <HouseholdInsights bills={completedBills} config={config} stats={stats}
+    onSelectPerson={setSelectedPerson} />;
+}
+
+function HouseholdInsights({ bills, config, stats, onSelectPerson }) {
+  const { personTotals, catTotals } = stats;
+  const people = config.people || [];
+
+  const grandTotal    = Object.values(personTotals).reduce((s, v) => s + v, 0);
+  const rawTotal      = bills.reduce((s, b) => s + b.totalBill, 0);
+  const avgBill       = bills.length > 0 ? rawTotal / bills.length : 0;
+  const maxPerson     = Math.max(...Object.values(personTotals), 0.01);
+
+  const sortedPeople  = [...people].sort((a, b) => (personTotals[b] || 0) - (personTotals[a] || 0));
+  const sortedCats    = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const maxCat        = sortedCats[0]?.[1] || 0.01;
+
+  const sectionHead   = { fontSize:12, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:10 };
+
+  return (
+    <div>
+      <div className="header">
+        <div style={{ width:40 }} />
+        <span className="header-title">📊 Insights</span>
+        <div style={{ width:40 }} />
+      </div>
+
+      <div style={{ padding:'4px 16px 40px' }}>
+        {/* Summary strip */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, margin:'12px 0 24px' }}>
+          {[
+            { label:'Receipts',    value: bills.length },
+            { label:'Total spent', value:`£${grandTotal.toFixed(0)}` },
+            { label:'Avg shop',    value:`£${avgBill.toFixed(0)}` },
+          ].map(({ label, value }) => (
+            <div key={label} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 8px', textAlign:'center' }}>
+              <div style={{ fontSize:20, fontWeight:800, color:'var(--text)' }}>{value}</div>
+              <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Per-person spending */}
+        <div style={{ marginBottom:28 }}>
+          <div style={sectionHead}>Spending per person</div>
+          {sortedPeople.map((name, i) => {
+            const total = personTotals[name] || 0;
+            const emoji = getEmoji(config, name);
+            const color = CHART_PERSON_COLORS[i % CHART_PERSON_COLORS.length];
+            return (
+              <div key={name} onClick={() => onSelectPerson(name)}
+                style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 0', borderBottom:'1px solid var(--border)', cursor:'pointer' }}>
+                <div style={{ width:9, height:9, borderRadius:'50%', background:color, flexShrink:0 }} />
+                <span style={{ fontSize:14, minWidth:72 }}>{emoji ? emoji+' ' : ''}{name}</span>
+                <ChartBar value={total} max={maxPerson} color={color} />
+                <span style={{ fontSize:14, fontWeight:700, minWidth:52, textAlign:'right' }}>£{total.toFixed(2)}</span>
+                <span style={{ color:'var(--muted)', fontSize:14 }}>›</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Category breakdown */}
+        {sortedCats.length > 0 && (
+          <div>
+            <div style={sectionHead}>Spending by category</div>
+            {sortedCats.map(([cat, total], i) => (
+              <div key={cat} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:'1px solid var(--border)' }}>
+                <div style={{ width:9, height:9, borderRadius:'50%', background:CHART_CAT_COLORS[i % CHART_CAT_COLORS.length], flexShrink:0 }} />
+                <span style={{ fontSize:13, flex:1 }}>{cat}</span>
+                <ChartBar value={total} max={maxCat} color={CHART_CAT_COLORS[i % CHART_CAT_COLORS.length]} />
+                <span style={{ fontSize:13, fontWeight:700, minWidth:52, textAlign:'right' }}>£{total.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PersonInsights({ person, stats, bills, config, onBack }) {
+  const { personItems, perPersonCats } = stats;
+  const items  = personItems[person] || [];
+  const emoji  = getEmoji(config, person);
+
+  const total       = items.reduce((s, it) => s + it.share, 0);
+  const soloTotal   = items.filter(it => it.solo).reduce((s, it) => s + it.share, 0);
+  const sharedTotal = total - soloTotal;
+
+  // Top items by cumulative spend (aggregated across bills)
+  const itemMap = {};
+  items.forEach(it => {
+    itemMap[it.name] = itemMap[it.name] || { name:it.name, total:0, count:0, solo:0 };
+    itemMap[it.name].total += it.share;
+    itemMap[it.name].count++;
+    if (it.solo) itemMap[it.name].solo++;
+  });
+  const topItems    = Object.values(itemMap).sort((a, b) => b.total - a.total).slice(0, 10);
+  const maxItemTotal = topItems[0]?.total || 0.01;
+
+  // Sharing partners
+  const sharePartners = {};
+  items.filter(it => !it.solo).forEach(it => {
+    it.sharedWith.forEach(p => { sharePartners[p] = (sharePartners[p] || 0) + 1; });
+  });
+  const topPartners = Object.entries(sharePartners).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  // Categories
+  const myCats  = Object.entries(perPersonCats[person] || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const maxCat  = myCats[0]?.[1] || 0.01;
+
+  const sectionHead = { fontSize:12, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:10 };
+
+  return (
+    <div>
+      <div className="header">
+        <button className="btn btn-ghost btn-icon" onClick={onBack}>←</button>
+        <span className="header-title">{emoji ? emoji+' ' : ''}{person}</span>
+        <div style={{ width:40 }} />
+      </div>
+
+      <div style={{ padding:'4px 16px 40px' }}>
+        {/* Summary cards */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, margin:'12px 0 24px' }}>
+          {[
+            { label:'Total spent',   value:`£${total.toFixed(2)}` },
+            { label:'Items bought',  value: items.length },
+            { label:'Paid solo',     value:`£${soloTotal.toFixed(2)}` },
+            { label:'Paid shared',   value:`£${sharedTotal.toFixed(2)}` },
+          ].map(({ label, value }) => (
+            <div key={label} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 12px' }}>
+              <div style={{ fontSize:20, fontWeight:800 }}>{value}</div>
+              <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Solo vs shared split bar */}
+        {total > 0 && (
+          <div style={{ marginBottom:28 }}>
+            <div style={sectionHead}>Solo vs shared</div>
+            <div style={{ display:'flex', height:14, borderRadius:7, overflow:'hidden', gap:2, marginBottom:8 }}>
+              {soloTotal > 0 && <div style={{ flex:soloTotal, background:'var(--primary)', borderRadius:'7px 0 0 7px' }} />}
+              {sharedTotal > 0 && <div style={{ flex:sharedTotal, background:'var(--success)', borderRadius: soloTotal > 0 ? '0 7px 7px 0' : 7 }} />}
+            </div>
+            <div style={{ display:'flex', gap:20, fontSize:13 }}>
+              <span>
+                <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:'var(--primary)', marginRight:5 }} />
+                Solo {total > 0 ? Math.round(soloTotal/total*100) : 0}% · £{soloTotal.toFixed(2)}
+              </span>
+              <span>
+                <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:'var(--success)', marginRight:5 }} />
+                Shared {total > 0 ? Math.round(sharedTotal/total*100) : 0}% · £{sharedTotal.toFixed(2)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Sharing partners */}
+        {topPartners.length > 0 && (
+          <div style={{ marginBottom:28 }}>
+            <div style={sectionHead}>Most shared with</div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+              {topPartners.map(([p, count]) => {
+                const pe = getEmoji(config, p);
+                return (
+                  <div key={p} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:20, padding:'7px 14px', fontSize:13 }}>
+                    {pe ? pe+' ' : ''}{p}
+                    <span style={{ color:'var(--muted)', marginLeft:6, fontSize:11 }}>{count}×</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Top items by spend */}
+        {topItems.length > 0 && (
+          <div style={{ marginBottom:28 }}>
+            <div style={sectionHead}>Top items by spend</div>
+            {topItems.map((it, i) => (
+              <div key={it.name} style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 0', borderBottom:'1px solid var(--border)' }}>
+                <span style={{ fontSize:13, flex:1, color:'var(--text)' }}>{it.name}</span>
+                {it.count > 1 && <span style={{ fontSize:11, color:'var(--muted)', flexShrink:0 }}>{it.count}×</span>}
+                <ChartBar value={it.total} max={maxItemTotal} color={CHART_PERSON_COLORS[0]} height={5} />
+                <span style={{ fontSize:13, fontWeight:700, minWidth:50, textAlign:'right' }}>£{it.total.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Category breakdown */}
+        {myCats.length > 0 && (
+          <div>
+            <div style={sectionHead}>Spending by category</div>
+            {myCats.map(([cat, catTotal], i) => (
+              <div key={cat} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 0', borderBottom:'1px solid var(--border)' }}>
+                <div style={{ width:9, height:9, borderRadius:'50%', background:CHART_CAT_COLORS[i%CHART_CAT_COLORS.length], flexShrink:0 }} />
+                <span style={{ fontSize:13, flex:1 }}>{cat}</span>
+                <ChartBar value={catTotal} max={maxCat} color={CHART_CAT_COLORS[i%CHART_CAT_COLORS.length]} />
+                <span style={{ fontSize:13, fontWeight:700, minWidth:50, textAlign:'right' }}>£{catTotal.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Data helpers ──────────────────────────────────────────────
 function getAssignees(assignments, idx) {
   const raw = assignments?.[String(idx)] ?? assignments?.[idx] ?? [];
@@ -588,11 +907,15 @@ function App() {
           onBack={() => { setActiveBill(null); setScreen('bills'); }}
         />
       )}
+      {screen === 'insights' && (
+        <InsightsScreen bills={bills} config={config} onBack={() => setScreen('bills')} />
+      )}
       {screen === 'bills' && (
         <BillsScreen
           {...ctx}
           onOpenBill={bill => { setActiveBill(bill); setScreen('bill'); }}
           onOpenSettings={() => setScreen('settings')}
+          onOpenInsights={() => setScreen('insights')}
           onBillCreated={bill => { setBills(p => [bill, ...p]); setActiveBill(bill); setScreen('bill'); }}
         />
       )}
@@ -659,7 +982,7 @@ function LoginScreen() {
 // ════════════════════════════════════════════════════════════
 // BILLS LIST SCREEN
 // ════════════════════════════════════════════════════════════
-function BillsScreen({ bills, config, user, onOpenBill, onOpenSettings, onBillCreated, completeBill, uncompleteBill, deleteBill, showToast }) {
+function BillsScreen({ bills, config, user, onOpenBill, onOpenSettings, onOpenInsights, onBillCreated, completeBill, uncompleteBill, deleteBill, showToast }) {
   const [uploading, setUploading] = useState(false);
   const [dragOver,  setDragOver]  = useState(false);
   const fileRef = useRef();
@@ -699,7 +1022,10 @@ function BillsScreen({ bills, config, user, onOpenBill, onOpenSettings, onBillCr
       <div className="header">
         <span style={{ fontSize:22 }}>🛒</span>
         <span className="header-title">Bill Splitter</span>
-        <button className="btn btn-ghost btn-icon" onClick={onOpenSettings} title="Settings">⚙️</button>
+        <div style={{ display:'flex', gap:0 }}>
+          <button className="btn btn-ghost btn-icon" onClick={onOpenInsights} title="Insights">📊</button>
+          <button className="btn btn-ghost btn-icon" onClick={onOpenSettings} title="Settings">⚙️</button>
+        </div>
       </div>
 
       {(() => {
