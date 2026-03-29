@@ -363,14 +363,22 @@ async function parsePdf(file) {
 }
 
 function parseReceiptItems(text) {
-  const SKIP = /^(subtotal|total|balance|savings|saved|clubcard|nectar|reward|payment|change|cash|visa|mastercard|contactless|approved|thank you|store|receipt|transaction|vat|points|voucher|bag|carrier|loyalty|online|delivery|charge|fee|price match|you save|you've|spend|earn|bonus|offer|discount|saving|low every|previous|new points|order summary|slot time|groceries \(|your receipt|we took|thanks for)/i;
+  const SKIP = /^(subtotal|total|balance|savings|saved|clubcard|nectar|reward|payment|change|cash|visa|mastercard|contactless|approved|thank you|store|receipt|transaction|vat|points|voucher|bag|carrier|loyalty|online|delivery|charge|fee|price match|you save|you've|spend|earn|bonus|offer|discount|saving|low every|previous|new points|slot time|your receipt|we took|thanks for)/i;
   // Require literal £ so negative savings lines and bare numbers never match
   const PRICE_LINE = /^(.*?)\s+£(\d+\.\d{2})\s*$/;
   const items = [];
+  let inGroceries = false;
 
   for (const raw of text.split(/\n/)) {
     const line = raw.trim();
-    if (!line || line.length < 3 || SKIP.test(line)) continue;
+    if (!line || line.length < 3) continue;
+
+    // Start parsing items only after the "Groceries (X items)" heading
+    if (/^Groceries\s*\(/i.test(line)) { inGroceries = true; continue; }
+    // Stop parsing at "Order summary"
+    if (/^Order\s+summary/i.test(line)) break;
+
+    if (!inGroceries || SKIP.test(line)) continue;
     const m = PRICE_LINE.exec(line);
     if (!m) continue;
 
