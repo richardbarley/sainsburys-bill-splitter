@@ -297,6 +297,16 @@ function fmtDate(iso) {
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+// Sanitise strings extracted by pdfjs before they reach Supabase/PostgreSQL.
+// PostgreSQL rejects: null bytes (\u0000) and lone Unicode surrogates (U+D800–U+DFFF).
+// pdfjs can produce both when PDFs use non-standard font encodings.
+function sanitizePdfStr(str) {
+  return str
+    .replace(/\u0000/g, '')                   // remove null bytes
+    .replace(/[\uD800-\uDFFF]/g, '')          // remove lone surrogates
+    .replace(/\u00a3/g, '\u00a3');            // ensure £ is clean NFC
+}
+
 async function parsePdf(file) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -311,13 +321,14 @@ async function parsePdf(file) {
     // a fraction of a point in transform[5].
     const rows = [];
     for (const item of content.items) {
-      if (!item.str.trim()) continue;
+      const str = sanitizePdfStr(item.str);
+      if (!str.trim()) continue;
       const y = item.transform[5];
       const existing = rows.find(r => Math.abs(r.y - y) <= 3);
       if (existing) {
-        existing.items.push({ str: item.str, x: item.transform[4] });
+        existing.items.push({ str, x: item.transform[4] });
       } else {
-        rows.push({ y, items: [{ str: item.str, x: item.transform[4] }] });
+        rows.push({ y, items: [{ str, x: item.transform[4] }] });
       }
     }
     // PDF Y axis is bottom-up → sort descending = top-to-bottom reading order
