@@ -4,6 +4,18 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Bill Splitter</title>
+  <script>
+    // Apply theme before first paint to avoid a flash of the wrong colour scheme.
+    // React's useEffect runs after render, which is too late.
+    (function () {
+      try {
+        var stored = localStorage.getItem('theme');
+        var isDark = stored ? stored === 'dark'
+                            : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (isDark) document.documentElement.classList.add('dark');
+      } catch (e) { /* localStorage may be unavailable; ignore */ }
+    })();
+  </script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -29,25 +41,11 @@
       --radius:        12px;
     }
 
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg:            #0f172a;
-        --surface:       #1e293b;
-        --surface-alt:   #162032;
-        --border:        #334155;
-        --text:          #f1f5f9;
-        --muted:         #94a3b8;
-        --primary:       #60a5fa;
-        --primary-light: #1e3a5f;
-        --success:       #4ade80;
-        --success-light: #14532d;
-        --danger:        #f87171;
-        --danger-light:  #2d1515;
-        --danger-border: #7f1d1d;
-      }
-    }
-
-    body.dark {
+    /* Dark theme — applied via html.dark so the manual toggle always wins.
+       System preference is read once by the inline script in <head> and
+       mirrored onto html.dark, so we don't need a prefers-color-scheme
+       media query here (it would fight the toggle on dark-mode systems). */
+    html.dark {
       --bg:            #0f172a;
       --surface:       #1e293b;
       --surface-alt:   #162032;
@@ -145,10 +143,7 @@
     .badge-new     { background: var(--bg); color: var(--muted); }
     .badge-active  { background: var(--success-light); color: var(--success); }
     .badge-pending { background: #fef3c7; color: #92400e; }
-    @media (prefers-color-scheme: dark) {
-      .badge-pending { background: #451a03; color: #fbbf24; }
-    }
-    body.dark .badge-pending { background: #451a03; color: #fbbf24; }
+    html.dark .badge-pending { background: #451a03; color: #fbbf24; }
 
     /* ── Progress ── */
     .prog-bar { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
@@ -935,7 +930,7 @@ function App() {
   const toastRef = useRef();
 
   useEffect(() => {
-    document.body.classList.toggle('dark', isDark);
+    document.documentElement.classList.toggle('dark', isDark);
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
   }, [isDark]);
 
