@@ -1619,7 +1619,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
                         {/* Person header row */}
                         <div
                           onClick={() => setExpandedPerson(isOpen ? null : name)}
-                          style={{ display:'flex', alignItems:'center', gap:10, padding:'13px 20px', cursor:'pointer', background: isOpen ? '#f8fafc' : 'white' }}
+                          style={{ display:'flex', alignItems:'center', gap:10, padding:'13px 20px', cursor:'pointer', background: isOpen ? 'var(--bg)' : 'var(--surface)' }}
                         >
                           <div style={{ width:10, height:10, borderRadius:'50%', background:c.bd, flexShrink:0 }} />
                           <span style={{ flex:1, fontWeight:700, fontSize:15 }}>
@@ -2280,7 +2280,7 @@ function GroupsTab({ config, saveConfig, showToast }) {
       {(config.groups || []).map(group => (
         <div key={group.name} style={{ marginBottom:8, border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
           <div
-            style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px', cursor: editingGroup === group.name ? 'default' : 'pointer', background: expanded === group.name ? '#f8fafc' : 'white' }}
+            style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px', cursor: editingGroup === group.name ? 'default' : 'pointer', background: expanded === group.name ? 'var(--bg)' : 'var(--surface)' }}
             onClick={() => editingGroup !== group.name && setExpanded(expanded === group.name ? null : group.name)}
           >
             <input
