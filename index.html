@@ -209,6 +209,32 @@
       animation: spin .7s linear infinite; display: inline-block;
     }
 
+    /* ── Initial load splash ──
+       Static markup inside #root, painted immediately on first render
+       (before React/Babel finish), then auto-replaced when React mounts. */
+    #app-splash {
+      position: fixed; inset: 0; z-index: 9999;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+      background: var(--bg);
+    }
+    #app-splash .as-logo  { font-size: 46px; line-height: 1; }
+    #app-splash .as-title { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -.01em; }
+    #app-splash .as-track {
+      width: 200px; height: 6px; border-radius: 999px;
+      background: var(--surface-alt); overflow: hidden;
+    }
+    #app-splash .as-bar {
+      height: 100%; width: 40%; border-radius: 999px;
+      background: var(--primary);
+      animation: as-slide 1.1s ease-in-out infinite;
+    }
+    #app-splash .as-sub { font-size: 13px; color: var(--muted); }
+    @keyframes as-slide {
+      0%   { margin-left: -45%; }
+      100% { margin-left: 105%; }
+    }
+
     /* ── Login ── */
     .login-wrap {
       display: flex; flex-direction: column; align-items: center;
@@ -231,7 +257,16 @@
   </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root">
+  <!-- Static loading splash: paints instantly, before React/Babel finish.
+       React replaces #root's contents on mount, so this disappears automatically. -->
+  <div id="app-splash">
+    <div class="as-logo">🧾</div>
+    <div class="as-title">Bill Splitter</div>
+    <div class="as-track"><div class="as-bar"></div></div>
+    <div class="as-sub">Loading…</div>
+  </div>
+</div>
 <script type="text/babel">
 /* ════════════════════════════════════════════════════════════
    BILL SPLITTER  —  Collaborative, Supabase-first
