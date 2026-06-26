@@ -15,3 +15,9 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Netlify
+.netlify/
+
+# Deploy artifacts
+deploy-*.zip
