@@ -1523,6 +1523,21 @@ function BillCard({ bill, allNames, onClick, onComplete, onUncomplete, onDelete,
 // SUGGESTION ENGINE
 // ════════════════════════════════════════════════════════════
 
+// Only suggestions scoring at or above this are confident enough to APPLY
+// automatically. Weaker matches (>= MIN_CONFIDENCE) still surface as a
+// tap-to-assign hint but are never auto-applied.
+const AUTO_ASSIGN_THRESHOLD = 0.5;
+
+// Auto-assign on/off preference (persisted per browser, default ON)
+const AUTO_ASSIGN_KEY = 'bs.autoAssign';
+function loadAutoAssignPref() {
+  try { const v = localStorage.getItem(AUTO_ASSIGN_KEY); return v === null ? true : v === '1'; }
+  catch { return true; }
+}
+function saveAutoAssignPref(on) {
+  try { localStorage.setItem(AUTO_ASSIGN_KEY, on ? '1' : '0'); } catch {}
+}
+
 // Strip quantities, units, and noise words so "Whole Milk 4 Pints" matches "Whole Milk 6 Pints"
 function normalizeForMatch(name) {
   return name
@@ -1571,7 +1586,7 @@ function computeSuggestions(pastBills, currentBill) {
 
     if (!Object.keys(tally).length) return;
     const [bestKey, score] = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
-    if (score >= MIN_CONFIDENCE) suggestions[idx] = JSON.parse(bestKey);
+    if (score >= MIN_CONFIDENCE) suggestions[idx] = { assignees: JSON.parse(bestKey), score };
   });
 
   return suggestions;
@@ -2084,6 +2099,46 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
     await saveBillAssignments(bill, newAssign);
   }
 
+  // Apply high-confidence suggestions to any still-unassigned items in one batch.
+  // Never overwrites existing assignments or manual splits. Returns count applied.
+  async function autoAssignConfident({ showEmpty = false } = {}) {
+    if (isDone) return 0;
+    const next = { ...bill.assignments };
+    let count = 0;
+    bill.items.forEach((_, idx) => {
+      const sug = suggestions[idx];
+      if (!sug || sug.score < AUTO_ASSIGN_THRESHOLD) return;     // not confident enough
+      if (getAssignees(bill.assignments, idx).length) return;    // already assigned
+      if (getManualSplit(bill.assignments, idx)) return;         // manual split — leave alone
+      next[String(idx)] = sug.assignees;
+      count++;
+    });
+    if (count > 0) {
+      await saveBillAssignments(bill, next);
+      showToast(`🪄 Auto-assigned ${count} item${count > 1 ? 's' : ''} — please review`);
+    } else if (showEmpty) {
+      showToast('No confident matches to auto-assign');
+    }
+    return count;
+  }
+
+  // Are there unassigned items we could confidently auto-assign right now?
+  const autoAvailable = !isDone && bill.items.some((_, idx) =>
+    suggestions[idx] && suggestions[idx].score >= AUTO_ASSIGN_THRESHOLD &&
+    !getAssignees(bill.assignments, idx).length && !getManualSplit(bill.assignments, idx)
+  );
+
+  // Auto-run once per bill open when the preference is enabled.
+  const autoRanRef = React.useRef(null);
+  React.useEffect(() => {
+    if (isDone) return;
+    if (autoRanRef.current === bill.id) return;
+    if (!loadAutoAssignPref()) return;
+    autoRanRef.current = bill.id;
+    autoAssignConfident({ showEmpty: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bill.id]);
+
   async function toggle(name) {
     if (isDone) return;
     const cur = getAssignees(bill.assignments, safeIdx);
@@ -2476,12 +2531,18 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
             );
           })}
         </div>
-        <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'var(--muted)' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:12, color:'var(--muted)' }}>
           <span>{assigned} of {total} assigned</span>
           {allAssigned && !isDone && (
             <button style={{ background:'none', border:'none', color:'var(--success)', fontWeight:700, fontSize:12, cursor:'pointer', padding:0 }}
               onClick={() => setView('summary')}>
               All done — view summary →
+            </button>
+          )}
+          {!allAssigned && !isDone && autoAvailable && (
+            <button style={{ background:'none', border:'none', color:'var(--primary)', fontWeight:700, fontSize:12, cursor:'pointer', padding:0 }}
+              onClick={() => autoAssignConfident({ showEmpty:true })}>
+              🪄 Auto-assign confident
             </button>
           )}
           {isDone && <span style={{ color:'var(--success)', fontWeight:700 }}>✓ Complete</span>}
@@ -2665,7 +2726,8 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
                 const gmap2 = {};
                 getEffectiveGroups(config).forEach(g => { gmap2[g.name] = g.members || []; });
                 const expanded = assignees.flatMap(a => gmap2[a]?.length ? gmap2[a] : [a]);
-                const suggestion = !isDone && !manualSplit && assignees.length === 0 ? suggestions[safeIdx] : null;
+                const sugObj    = !isDone && !manualSplit && assignees.length === 0 ? suggestions[safeIdx] : null;
+                const suggestion = sugObj ? sugObj.assignees : null;
                 return (
                   <div style={{ height:32, display:'flex', alignItems:'center', justifyContent:'center' }}>
                     {manualSplit
@@ -2778,6 +2840,51 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
 // ════════════════════════════════════════════════════════════
 // SETTINGS SCREEN
 // ════════════════════════════════════════════════════════════
+// ── General tab (app preferences) ─────────────────────────────
+function GeneralTab({ showToast }) {
+  const [autoAssign, setAutoAssign] = useState(loadAutoAssignPref());
+
+  function toggle() {
+    const next = !autoAssign;
+    setAutoAssign(next);
+    saveAutoAssignPref(next);
+    showToast(next ? 'Auto-assign on' : 'Auto-assign off');
+  }
+
+  return (
+    <div style={{ padding:16 }}>
+      <div style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'12px 0' }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:600, fontSize:15, marginBottom:4 }}>Auto-assign confident items</div>
+          <p style={{ fontSize:13, color:'var(--muted)', lineHeight:1.5, margin:0 }}>
+            When a receipt opens, automatically assign items the engine is confident
+            about (based on how you split similar items before). Low-confidence items
+            still show a tap-to-assign hint, and nothing already assigned is overwritten.
+            You can review everything before marking the bill complete.
+          </p>
+        </div>
+        {/* Simple switch */}
+        <button
+          onClick={toggle}
+          aria-pressed={autoAssign}
+          style={{
+            flexShrink:0, width:48, height:28, borderRadius:14, border:'none', cursor:'pointer',
+            background: autoAssign ? 'var(--primary)' : 'var(--border)',
+            position:'relative', transition:'background .15s', marginTop:2,
+          }}
+        >
+          <span style={{
+            position:'absolute', top:3, left: autoAssign ? 23 : 3, width:22, height:22,
+            borderRadius:'50%', background:'#fff', transition:'left .15s',
+            boxShadow:'0 1px 3px rgba(0,0,0,.3)',
+          }} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
 function SettingsScreen({ config, user, onBack, saveConfig, showToast }) {
   const [tab, setTab] = useState('people');
 
@@ -2791,16 +2898,17 @@ function SettingsScreen({ config, user, onBack, saveConfig, showToast }) {
       </div>
 
       <div className="tab-bar">
-        {[['people','👤 People'],['groups','👥 Groups'],['users','🔑 Users']].map(([key, label]) => (
+        {[['people','👤 People'],['groups','👥 Groups'],['users','🔑 Users'],['general','⚙️ General']].map(([key, label]) => (
           <div key={key} className={'tab' + (tab === key ? ' on' : '')} onClick={() => setTab(key)}>
             {label}
           </div>
         ))}
       </div>
 
-      {tab === 'people' && <PeopleTab  config={config} saveConfig={saveConfig} showToast={showToast} />}
-      {tab === 'groups' && <GroupsTab  config={config} saveConfig={saveConfig} showToast={showToast} />}
-      {tab === 'users'  && <UsersTab   user={user} showToast={showToast} />}
+      {tab === 'people'  && <PeopleTab  config={config} saveConfig={saveConfig} showToast={showToast} />}
+      {tab === 'groups'  && <GroupsTab  config={config} saveConfig={saveConfig} showToast={showToast} />}
+      {tab === 'users'   && <UsersTab   user={user} showToast={showToast} />}
+      {tab === 'general' && <GeneralTab showToast={showToast} />}
 
       <div style={{ textAlign:'center', padding:'24px 16px 32px' }}>
         <button

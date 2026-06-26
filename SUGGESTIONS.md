@@ -47,10 +47,31 @@ The result is a map of `{ [itemIndex]: assignees[] }` for confidently matched it
   `bill_history` table, so they work across devices, not just the browser that
   created them.
 
+## Auto-assign
+
+Confident suggestions are applied automatically so there's less to do on each bill.
+
+- **High-confidence only.** A suggestion is auto-applied only if its weighted score
+  reaches `AUTO_ASSIGN_THRESHOLD = 0.5`. Weaker matches (between 0.25 and 0.5) are
+  *not* auto-applied — they still appear as a tap-to-assign hint, so a poor guess is
+  never silently committed.
+- **Non-destructive.** Auto-assign only fills items that are currently unassigned.
+  It never overwrites an existing assignment or a manual (quantity/custom) split.
+- **Runs on bill open** (`autoAssignConfident` via a `useEffect` keyed on `bill.id`)
+  when the preference is on, applying all confident items in a single batched save
+  and showing a "🪄 Auto-assigned N items — please review" toast.
+- **Re-runnable.** While a bill is partly done, a "🪄 Auto-assign confident" button
+  appears next to the progress count so remaining confident items can be filled in
+  at any time.
+- **Toggle.** Settings → General → "Auto-assign confident items" controls it
+  (default on, persisted per browser in `localStorage` key `bs.autoAssign`). With it
+  off, suggestions still appear as tap-to-assign hints but nothing is auto-applied.
+
 ## Key constants
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `MATCH_THRESHOLD` | 0.35 | Minimum per-item name similarity to consider a past item a match |
-| `MIN_CONFIDENCE` | 0.25 | Minimum weighted score before a suggestion is surfaced |
+| `MIN_CONFIDENCE` | 0.25 | Minimum weighted score before a suggestion is surfaced as a hint |
+| `AUTO_ASSIGN_THRESHOLD` | 0.5 | Minimum weighted score before a suggestion is auto-applied |
 | `recency` | `1 / (age + 1)` | Down-weights older bills |
