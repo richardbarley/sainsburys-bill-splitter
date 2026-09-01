@@ -39,6 +39,13 @@ Consequences worth knowing:
 - Access is granted by adding an address to `pp_members`. A signed-in
   non-member gets an explicit "no access" screen rather than a
   confusingly-empty app.
+- Defence in depth: `anon` holds no table grants at all on the `pp_` tables,
+  so an unauthenticated caller is refused before RLS is even consulted.
+  `pp_is_member()` / `pp_is_owner()` have EXECUTE revoked from `PUBLIC`
+  (not merely from `anon` — functions grant EXECUTE to `PUBLIC` by default
+  and `anon` inherits it, so revoking from `anon` alone does nothing).
+  `authenticated` keeps both the table grants and EXECUTE, because RLS needs
+  them; the policies are what narrow it to members and the owner.
 
 ## The one decision everything else follows from
 

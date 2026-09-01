@@ -6,7 +6,8 @@
 -- a free org and pauses after a period of inactivity.
 --
 -- Already applied via migrations pp_payment_plans_init,
--- pp_revoke_anon_execute and pp_people_is_me. Kept here as the
+-- pp_revoke_anon_execute, pp_people_is_me and pp_revoke_public_execute.
+-- Kept here as the
 -- readable record of the schema, and so it can be rebuilt from scratch.
 -- ============================================================
 
@@ -40,9 +41,14 @@ as $$
 $$;
 
 -- Only ever called from inside RLS policies, never over the REST rpc
--- endpoint, so anon has no business executing them.
-revoke execute on function public.pp_is_member() from anon;
-revoke execute on function public.pp_is_owner()  from anon;
+-- endpoint, so unauthenticated callers have no business executing them.
+-- It must be revoked from PUBLIC, not from anon: functions grant EXECUTE
+-- to PUBLIC by default and anon inherits that, so revoking from anon alone
+-- is a no-op and leaves /rest/v1/rpc/pp_is_owner open. This leaves the same
+-- ACL the home_ helpers carry — postgres, authenticated, service_role.
+-- `authenticated` deliberately keeps EXECUTE: the RLS policies need it.
+revoke execute on function public.pp_is_member() from public;
+revoke execute on function public.pp_is_owner()  from public;
 
 create or replace function pp_touch_updated_at() returns trigger
   language plpgsql set search_path to 'public','pg_catalog'
