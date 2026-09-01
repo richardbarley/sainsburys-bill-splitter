@@ -1,0 +1,2758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Payment Plans</title>
+  <script>
+    // Apply theme before first paint to avoid a flash of the wrong colour scheme.
+    // React's useEffect runs after render, which is too late.
+    (function () {
+      try {
+        var stored = localStorage.getItem('theme');
+        var isDark = stored ? stored === 'dark'
+                            : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (isDark) document.documentElement.classList.add('dark');
+      } catch (e) { /* localStorage may be unavailable; ignore */ }
+    })();
+  </script>
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:            #f8fafc;
+      --surface:       #ffffff;
+      --surface-alt:   #f1f5f9;
+      --border:        #e2e8f0;
+      --text:          #0f172a;
+      --muted:         #64748b;
+      --primary:       #2563eb;
+      --primary-light: #eff6ff;
+      --success:       #16a34a;
+      --success-light: #dcfce7;
+      --danger:        #dc2626;
+      --danger-light:  #fef2f2;
+      --danger-border: #fecaca;
+      --warn:          #b45309;
+      --warn-light:    #fef3c7;
+      --radius:        12px;
+    }
+
+    /* Dark theme — applied via html.dark so the manual toggle always wins.
+       System preference is read once by the inline script in <head> and
+       mirrored onto html.dark, so we don't need a prefers-color-scheme
+       media query here (it would fight the toggle on dark-mode systems). */
+    html.dark {
+      --bg:            #0f172a;
+      --surface:       #1e293b;
+      --surface-alt:   #162032;
+      --border:        #334155;
+      --text:          #f1f5f9;
+      --muted:         #94a3b8;
+      --primary:       #60a5fa;
+      --primary-light: #1e3a5f;
+      --success:       #4ade80;
+      --success-light: #14532d;
+      --danger:        #f87171;
+      --danger-light:  #2d1515;
+      --danger-border: #7f1d1d;
+      --warn:          #fbbf24;
+      --warn-light:    #451a03;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #root {
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100vh;
+      background: var(--surface);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Pushes the bottom nav to the foot of the screen when the content is
+       shorter than the viewport. Sticky still pins it on a long page. */
+    #root > .nav { margin-top: auto; }
+
+    /* ── Header ── */
+    .header {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 20px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .header-title { flex: 1; font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+    .header-sub   { flex: 1; min-width: 0; }
+    .header-sub .htitle  { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .header-sub .hdetail { font-size: 12px; color: var(--muted); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      padding: 10px 16px;
+      transition: opacity .12s, transform .12s;
+      white-space: nowrap;
+    }
+    .btn:active  { opacity: .8; transform: scale(.97); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-danger  { background: var(--danger);  color: #fff; }
+    .btn-ghost   { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-full    { width: 100%; padding: 14px; font-size: 16px; border-radius: 10px; }
+    .btn-sm      { padding: 6px 11px; font-size: 12px; border-radius: 7px; }
+    .btn-icon    { padding: 8px; border-radius: 8px; font-size: 18px; line-height: 1; }
+
+    /* ── Inputs ── */
+    .input {
+      width: 100%; padding: 11px 13px;
+      border: 1.5px solid var(--border); border-radius: 8px;
+      font-size: 15px; color: var(--text); background: var(--bg);
+      outline: none; transition: border-color .15s;
+      font-family: inherit;
+    }
+    .input:focus { border-color: var(--primary); background: var(--surface); }
+    textarea.input { resize: vertical; min-height: 70px; }
+    .label {
+      display: block; font-size: 12px; font-weight: 600; color: var(--muted);
+      margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .field { margin-bottom: 16px; }
+    .field-row { display: flex; gap: 10px; }
+    .field-row > * { flex: 1; min-width: 0; }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 5px; line-height: 1.4; }
+
+    /* Numeric money input — tabular figures so columns line up */
+    .input-money { font-variant-numeric: tabular-nums; }
+
+    /* ── Chips ── */
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 6px 12px; border-radius: 20px;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer; border: 1.5px solid transparent;
+      transition: all .12s; user-select: none; -webkit-user-select: none;
+    }
+    .chip:active { transform: scale(.94); }
+    .chip-off { background: var(--bg); border-color: var(--border); color: var(--muted); }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 7px; border-radius: 20px;
+      font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+    .badge-done    { background: var(--success-light); color: var(--success); }
+    .badge-wip     { background: var(--primary-light);  color: var(--primary); }
+    .badge-new     { background: var(--bg); color: var(--muted); }
+    .badge-late    { background: var(--danger-light); color: var(--danger); }
+    .badge-warn    { background: var(--warn-light); color: var(--warn); }
+
+    /* ── Progress ── */
+    .prog-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .prog-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width .4s; }
+    .prog-fill.done { background: var(--success); }
+    .prog-fill.late { background: var(--danger); }
+
+    /* ── Stat tiles ── */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px 20px 4px; }
+    .stat {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 13px;
+    }
+    .stat .s-label {
+      font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px;
+    }
+    .stat .s-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+    .stat .s-sub   { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .stat.wide { grid-column: 1 / -1; }
+    .v-pos { color: var(--success); }
+    .v-neg { color: var(--danger); }
+    .v-mut { color: var(--muted); }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px; margin: 12px 20px;
+    }
+    .card-tap { cursor: pointer; transition: transform .12s, border-color .12s; }
+    .card-tap:active { transform: scale(.99); border-color: var(--primary); }
+
+    /* ── Bill card ── */
+    .bill-top { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+    .bill-emoji { font-size: 22px; line-height: 1.2; }
+    .bill-name { flex: 1; min-width: 0; }
+    .bill-name .bn { font-size: 15px; font-weight: 700; line-height: 1.3; }
+    .bill-name .bm { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .bill-amt { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .bill-foot {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin-top: 8px; font-size: 12px; color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Tabs ── */
+    .tab-bar { display: flex; border-bottom: 1px solid var(--border); padding: 0 16px; gap: 4px; }
+    .tab {
+      padding: 10px 14px; font-size: 14px; font-weight: 600; color: var(--muted);
+      cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s;
+    }
+    .tab.on { color: var(--primary); border-bottom-color: var(--primary); }
+
+    /* ── Bottom nav ── */
+    .nav {
+      position: sticky; bottom: 0; z-index: 100;
+      display: flex; background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .nav-item {
+      flex: 1; padding: 9px 4px 10px; text-align: center;
+      cursor: pointer; color: var(--muted); transition: color .15s;
+      border: none; background: none; font-family: inherit;
+    }
+    .nav-item .ni { font-size: 19px; line-height: 1.2; }
+    .nav-item .nl { font-size: 10px; font-weight: 700; letter-spacing: .02em; margin-top: 1px; }
+    .nav-item.on { color: var(--primary); }
+
+    /* ── List rows ── */
+    .list-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 13px 20px; border-bottom: 1px solid var(--border);
+      transition: background .1s;
+    }
+    .list-row:last-child { border-bottom: none; }
+    .list-row.tap { cursor: pointer; }
+    .list-row.tap:active { background: var(--bg); }
+    .lr-main { flex: 1; min-width: 0; }
+    .lr-title { font-size: 14px; font-weight: 600; line-height: 1.3; }
+    .lr-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .lr-amt   { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    /* ── Avatar dot ── */
+    .avatar {
+      width: 30px; height: 30px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; flex-shrink: 0;
+      border: 1.5px solid; line-height: 1;
+    }
+    .avatar.sm { width: 22px; height: 22px; font-size: 10px; }
+
+    /* ── Schedule table ── */
+    .sched { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    .sched th {
+      text-align: left; font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .04em;
+      padding: 8px 20px; border-bottom: 1px solid var(--border);
+    }
+    .sched th.num, .sched td.num { text-align: right; }
+    .sched td { padding: 10px 20px; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .sched tr:last-child td { border-bottom: none; }
+    .sched tr.past td { color: var(--muted); }
+    .sched tr.waived td { text-decoration: line-through; opacity: .55; }
+    .sched td.amt { font-weight: 700; }
+
+    /* ── Sheet (bottom modal) ── */
+    .sheet-back {
+      position: fixed; inset: 0; background: rgba(0,0,0,.45);
+      z-index: 300; display: flex; align-items: flex-end; justify-content: center;
+    }
+    .sheet {
+      width: 100%; max-width: 480px; max-height: 88vh; overflow-y: auto;
+      background: var(--surface);
+      border-radius: 16px 16px 0 0;
+      padding: 18px 20px calc(22px + env(safe-area-inset-bottom));
+      animation: sheet-up .22s ease-out;
+    }
+    @keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    .sheet-title { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+    .sheet-sub   { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+      background: var(--text); color: var(--surface); padding: 10px 20px;
+      border-radius: 8px; font-size: 14px; font-weight: 500;
+      max-width: 90vw; text-align: center; z-index: 400; pointer-events: none;
+      box-shadow: 0 4px 16px rgba(0,0,0,.25);
+    }
+
+    /* ── Notice ── */
+    .notice {
+      margin: 12px 20px; padding: 10px 12px; border-radius: 9px;
+      font-size: 13px; line-height: 1.45;
+      border: 1px solid;
+    }
+    .notice-warn   { background: var(--warn-light);   color: var(--warn);   border-color: transparent; }
+    .notice-danger { background: var(--danger-light); color: var(--danger); border-color: var(--danger-border); }
+    .notice-info   { background: var(--primary-light); color: var(--primary); border-color: transparent; }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin {
+      width: 20px; height: 20px; border: 2px solid var(--border);
+      border-top-color: var(--primary); border-radius: 50%;
+      animation: spin .7s linear infinite; display: inline-block;
+    }
+
+    /* ── Initial load splash ──
+       Static markup inside #root, painted immediately on first render
+       (before React/Babel finish), then auto-replaced when React mounts. */
+    #app-splash {
+      position: fixed; inset: 0; z-index: 9999;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+      background: var(--bg);
+    }
+    #app-splash .as-logo  { font-size: 46px; line-height: 1; }
+    #app-splash .as-title { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -.01em; }
+    #app-splash .as-track {
+      width: 200px; height: 6px; border-radius: 999px;
+      background: var(--surface-alt); overflow: hidden;
+    }
+    #app-splash .as-bar {
+      height: 100%; width: 40%; border-radius: 999px;
+      background: var(--primary);
+      animation: as-slide 1.1s ease-in-out infinite;
+    }
+    #app-splash .as-sub { font-size: 13px; color: var(--muted); }
+    @keyframes as-slide {
+      0%   { margin-left: -45%; }
+      100% { margin-left: 105%; }
+    }
+
+    /* ── Login ── */
+    .login-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; min-height: 100vh; padding: 20px;
+    }
+
+    /* ── Empty state ── */
+    .empty { text-align: center; padding: 56px 20px; color: var(--muted); }
+    .empty .eicon { font-size: 40px; margin-bottom: 10px; }
+    .empty h3   { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .empty p    { font-size: 14px; line-height: 1.5; }
+
+    .section-hdr {
+      padding: 16px 20px 6px;
+      font-size: 12px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .05em;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+
+    .scroll-pad { padding-bottom: 24px; }
+
+    @media (max-width: 480px) { #root { max-width: 100%; } }
+  </style>
+</head>
+<body>
+<div id="root">
+  <!-- Static loading splash: paints instantly, before React/Babel finish.
+       React replaces #root's contents on mount, so this disappears automatically. -->
+  <div id="app-splash">
+    <div class="as-logo">📊</div>
+    <div class="as-title">Payment Plans</div>
+    <div class="as-track"><div class="as-bar"></div></div>
+    <div class="as-sub">Loading…</div>
+  </div>
+</div>
+<script type="text/babel">
+/* ════════════════════════════════════════════════════════════
+   PAYMENT PLANS  —  track a big bill, split it, schedule it,
+   and follow the cash in both directions.
+
+   Sibling of the Sainsbury's bill splitter at /. Shares its
+   design system and auth approach; different problem, different
+   data. Talks to Supabase directly — every pp_ table has RLS
+   gating on the caller's verified JWT email, so there is no
+   service-key proxy to go through.
+   ════════════════════════════════════════════════════════════ */
+
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+/* ════════════════════════════════════════════════════════════
+   MONEY
+   Everything is held in integer pence internally. Pounds only
+   ever appear at the edges — parsing input and formatting for
+   display — so no total is ever the sum of floats.
+   ════════════════════════════════════════════════════════════ */
+
+function toPence(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+}
+
+function toPounds(pence) { return (pence || 0) / 100; }
+
+const GBP = new Intl.NumberFormat('en-GB', {
+  style: 'currency', currency: 'GBP',
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
+
+function fmtP(pence) { return GBP.format(toPounds(pence)); }
+
+// Compact form for tiles: £1,234 rather than £1,234.00 when it's a round
+// number of pounds, which keeps the big numbers readable.
+function fmtPShort(pence) {
+  const p = pence || 0;
+  if (p % 100 === 0) {
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency', currency: 'GBP', maximumFractionDigits: 0,
+    }).format(toPounds(p));
+  }
+  return fmtP(p);
+}
+
+// Signed, for cash positions: -£420.00 reads better than (£420.00) here.
+function fmtSigned(pence) {
+  const p = pence || 0;
+  return (p > 0 ? '+' : '') + fmtP(p);
+}
+
+/**
+ * Split `total` pence across `weights`, exactly.
+ *
+ * Largest-remainder: every share gets its floor, then the leftover pennies
+ * go one each to the shares with the biggest fractional parts. The result
+ * always sums to `total` — no drift, no rounding hole, and the unavoidable
+ * odd penny lands on whoever was closest to earning it rather than always
+ * on the same person.
+ *
+ * Used for splitting BETWEEN PEOPLE, where fairness is the point.
+ */
+function allocate(total, weights) {
+  const n = weights.length;
+  if (!n) return [];
+  const sum = weights.reduce((a, b) => a + b, 0);
+  if (sum <= 0 || !total) return weights.map(() => 0);
+
+  const raw  = weights.map(w => (total * w) / sum);
+  const base = raw.map(Math.floor);
+  let rem = total - base.reduce((a, b) => a + b, 0);
+
+  const order = raw
+    .map((r, i) => ({ i, frac: r - Math.floor(r) }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+
+  for (let k = 0; k < rem && k < order.length; k++) base[order[k].i] += 1;
+  return base;
+}
+
+/**
+ * Split `total` pence across `months` monthly instalments.
+ *
+ * Deliberately NOT largest-remainder. A schedule is read by a human, and
+ * "£142.85 × 6 then £142.90" is obviously intentional where six months of
+ * £142.86 and one of £142.85 just looks like a bug. So every month carries
+ * the same amount and the final one absorbs the remainder (at most
+ * months-1 pence).
+ */
+function splitOverMonths(total, months) {
+  const m = Math.max(1, Math.floor(months || 1));
+  if (m === 1) return [total];
+  const base = Math.floor(total / m);
+  const out  = new Array(m - 1).fill(base);
+  out.push(total - base * (m - 1));
+  return out;
+}
+
+/* ════════════════════════════════════════════════════════════
+   DATES
+   Held as plain 'YYYY-MM-DD' strings and manipulated as strings.
+   No Date arithmetic anywhere near a due date — BST would
+   otherwise quietly shift a 1st-of-the-month into the 31st.
+   ════════════════════════════════════════════════════════════ */
+
+const MONTH_NAMES = ['January','February','March','April','May','June',
+                     'July','August','September','October','November','December'];
+const MONTH_ABBR  = ['Jan','Feb','Mar','Apr','May','Jun',
+                     'Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function ymOf(iso) {
+  const [y, m] = String(iso || todayISO()).split('-').map(Number);
+  return { y: y || 1970, m: m || 1 };
+}
+
+// Month index since year 0, so month arithmetic is just integer arithmetic.
+function monthIndex(iso) { const { y, m } = ymOf(iso); return y * 12 + (m - 1); }
+function fromMonthIndex(mi, day) {
+  const y  = Math.floor(mi / 12);
+  const m  = (mi % 12) + 1;
+  return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+// Due day is capped at 28 in the schema, so every month has it — no
+// February drift and no "31st of the month" special-casing.
+function dueDateISO(startISO, k, dueDay) {
+  return fromMonthIndex(monthIndex(startISO) + k, Math.min(28, Math.max(1, dueDay || 1)));
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = String(iso).split('-').map(Number);
+  if (!y) return '—';
+  return `${d} ${MONTH_ABBR[(m - 1) % 12]} ${y}`;
+}
+
+function fmtMonth(iso, long) {
+  if (!iso) return '—';
+  const { y, m } = ymOf(iso);
+  return `${(long ? MONTH_NAMES : MONTH_ABBR)[(m - 1) % 12]} ${y}`;
+}
+
+function monthKey(iso) { return String(iso || '').slice(0, 7); }   // 'YYYY-MM'
+function thisMonthKey() { return todayISO().slice(0, 7); }
+
+function shiftMonthKey(key, delta) {
+  const mi = monthIndex(key + '-01') + delta;
+  const y = Math.floor(mi / 12), m = (mi % 12) + 1;
+  return `${y}-${String(m).padStart(2, '0')}`;
+}
+
+function relativeDue(iso) {
+  const t = todayISO();
+  if (iso === t) return 'today';
+  const days = Math.round((Date.parse(iso + 'T00:00:00Z') - Date.parse(t + 'T00:00:00Z')) / 86400000);
+  if (days < 0)  return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} overdue`;
+  if (days === 1) return 'tomorrow';
+  if (days < 31)  return `in ${days} days`;
+  const months = Math.round(days / 30);
+  return `in ${months} month${months === 1 ? '' : 's'}`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   PEOPLE
+   ════════════════════════════════════════════════════════════ */
+
+const PALETTE = [
+  { bg:'#dbeafe', bd:'#3b82f6', fg:'#1e40af' },
+  { bg:'#ede9fe', bd:'#8b5cf6', fg:'#4c1d95' },
+  { bg:'#d1fae5', bd:'#10b981', fg:'#064e3b' },
+  { bg:'#fce7f3', bd:'#ec4899', fg:'#831843' },
+  { bg:'#ffedd5', bd:'#fb923c', fg:'#7c2d12' },
+  { bg:'#fef9c3', bd:'#facc15', fg:'#713f12' },
+  { bg:'#cffafe', bd:'#22d3ee', fg:'#164e63' },
+  { bg:'#fecaca', bd:'#f87171', fg:'#7f1d1d' },
+];
+
+function paletteFor(person) {
+  return PALETTE[((person?.colour_idx ?? 0) % PALETTE.length + PALETTE.length) % PALETTE.length];
+}
+
+function initials(name) {
+  return String(name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
+}
+
+const CATEGORIES = [
+  { key: 'holiday',  emoji: '🏖',  label: 'Holiday'  },
+  { key: 'purchase', emoji: '🛋',  label: 'Purchase' },
+  { key: 'event',    emoji: '🎟',  label: 'Event'    },
+  { key: 'vehicle',  emoji: '🚗',  label: 'Vehicle'  },
+  { key: 'home',     emoji: '🏠',  label: 'Home'     },
+  { key: 'other',    emoji: '💷',  label: 'Other'    },
+];
+
+function categoryEmoji(key) {
+  return (CATEGORIES.find(c => c.key === key) || CATEGORIES[CATEGORIES.length - 1]).emoji;
+}
+
+/* ════════════════════════════════════════════════════════════
+   SHARE RESOLUTION
+   ════════════════════════════════════════════════════════════ */
+
+/**
+ * Turn share definitions into pence-exact amounts owed.
+ *
+ * Applied in order of certainty: fixed amounts are taken as stated,
+ * percentages are taken off the bill total, and whoever is left on
+ * 'equal' divides up whatever remains. That ordering is what lets
+ * "Rosie owes exactly £300, the rest of us split the remainder"
+ * work without any special handling.
+ *
+ * Returns { amounts: {personId: pence}, allocated, unallocated, over }.
+ * `over` is true when fixed + percent already exceed the total, which the
+ * UI surfaces rather than silently clamping to a wrong-looking split.
+ */
+function resolveShares(totalPence, defs) {
+  const amounts = {};
+  let claimed = 0;
+
+  defs.forEach(d => {
+    if (d.share_type === 'fixed') {
+      const p = toPence(d.share_value);
+      amounts[d.person_id] = p;
+      claimed += p;
+    } else if (d.share_type === 'percent') {
+      const p = Math.round(totalPence * (Number(d.share_value) || 0) / 100);
+      amounts[d.person_id] = p;
+      claimed += p;
+    }
+  });
+
+  const equal    = defs.filter(d => d.share_type === 'equal' || !d.share_type);
+  const leftover = totalPence - claimed;
+
+  if (equal.length) {
+    const parts = allocate(Math.max(0, leftover), equal.map(() => 1));
+    equal.forEach((d, i) => { amounts[d.person_id] = parts[i]; });
+  }
+
+  const allocated = Object.values(amounts).reduce((a, b) => a + b, 0);
+  return {
+    amounts,
+    allocated,
+    unallocated: totalPence - allocated,
+    over: leftover < 0,
+  };
+}
+
+/* ════════════════════════════════════════════════════════════
+   BILL ARITHMETIC
+
+   The central modelling decision: payments are NEVER matched to a
+   specific instalment. The schedule says what should have arrived
+   by a given date; pp_payments_in says what actually arrived. A
+   person's position is the difference between the two running
+   totals.
+
+   That is what makes a lump sum, a short payment, a skipped month
+   and a catch-up all work with no reconciliation UI at all — the
+   arithmetic simply absorbs them.
+   ════════════════════════════════════════════════════════════ */
+
+function computeBill(bill, ctx) {
+  const today   = todayISO();
+  const totalP  = toPence(bill.total_amount);
+
+  const shares      = (ctx.shares      || []).filter(s => s.bill_id === bill.id);
+  const instalments = (ctx.instalments || []).filter(i => i.bill_id === bill.id);
+  const paysIn      = (ctx.paymentsIn  || []).filter(p => p.bill_id === bill.id);
+  const paysOut     = (ctx.paymentsOut || []).filter(p => p.bill_id === bill.id);
+
+  const people = [];
+  shares.forEach(s => {
+    const person = ctx.peopleById[s.person_id];
+    if (!person) return;
+
+    const owedP = toPence(s.amount_owed);
+    const mine  = instalments.filter(i => i.person_id === s.person_id);
+    const paidP = paysIn.filter(p => p.person_id === s.person_id)
+                        .reduce((a, p) => a + toPence(p.amount), 0);
+
+    // What the schedule says should have landed by now. Clamped to what
+    // they actually owe, so an over-long schedule can't invent arrears.
+    const dueToDateP = Math.min(
+      owedP,
+      mine.filter(i => !i.waived && i.due_date <= today)
+          .reduce((a, i) => a + toPence(i.amount), 0)
+    );
+
+    const scheduledP = mine.filter(i => !i.waived).reduce((a, i) => a + toPence(i.amount), 0);
+    const nextDue    = mine.filter(i => !i.waived && i.due_date > today)
+                           .sort((a, b) => a.due_date.localeCompare(b.due_date))[0] || null;
+
+    people.push({
+      person,
+      share: s,
+      isMe: !!person.is_me,
+      owedP,
+      paidP,
+      outstandingP: owedP - paidP,
+      arrearsP: person.is_me ? 0 : Math.max(0, dueToDateP - paidP),
+      dueToDateP,
+      scheduledP,
+      unscheduledP: owedP - scheduledP,   // owed but not yet on a schedule
+      nextDue,
+      instalments: mine.sort((a, b) => a.seq - b.seq),
+      payments: paysIn.filter(p => p.person_id === s.person_id)
+                      .sort((a, b) => b.paid_on.localeCompare(a.paid_on)),
+      pct: owedP > 0 ? Math.min(100, Math.round((paidP / owedP) * 100)) : 100,
+    });
+  });
+
+  people.sort((a, b) => (a.isMe - b.isMe) || b.owedP - a.owedP || a.person.name.localeCompare(b.person.name));
+
+  const others      = people.filter(p => !p.isMe);
+  const me          = people.find(p => p.isMe) || null;
+  const allocatedP  = people.reduce((a, p) => a + p.owedP, 0);
+  const owedToMeP   = others.reduce((a, p) => a + p.owedP, 0);
+  const receivedP   = others.reduce((a, p) => a + p.paidP, 0);
+  const arrearsP    = others.reduce((a, p) => a + p.arrearsP, 0);
+
+  const paidOutP      = paysOut.filter(p => !p.scheduled).reduce((a, p) => a + toPence(p.amount), 0);
+  const scheduledOutP = paysOut.filter(p =>  p.scheduled).reduce((a, p) => a + toPence(p.amount), 0);
+
+  return {
+    bill,
+    totalP,
+    allocatedP,
+    unallocatedP: totalP - allocatedP,
+    people, others, me,
+    owedToMeP,
+    receivedP,
+    outstandingP: owedToMeP - receivedP,
+    arrearsP,
+    myShareP: me ? me.owedP : 0,
+    paidOutP,
+    scheduledOutP,
+    // Negative means money is still out of my pocket on this bill.
+    netP: receivedP - paidOutP,
+    // What I still have to find to clear the bill myself.
+    stillToPayP: Math.max(0, totalP - paidOutP),
+    recoveredPct: owedToMeP > 0 ? Math.min(100, Math.round((receivedP / owedToMeP) * 100)) : 100,
+    instalments, paysIn, paysOut,
+    fullyRecovered: owedToMeP > 0 && receivedP >= owedToMeP,
+  };
+}
+
+/* ════════════════════════════════════════════════════════════
+   SUPABASE
+   ════════════════════════════════════════════════════════════ */
+
+const API = '/.netlify/functions';
+let _sb = null;
+
+async function initSb() {
+  if (_sb) return _sb;
+  const r   = await fetch(`${API}/plans-config`);
+  const cfg = await r.json();
+  if (!cfg.supabaseUrl) throw new Error(cfg.error || 'Missing supabaseUrl in config response');
+  _sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+    auth: { persistSession: true, autoRefreshToken: true, storageKey: 'pp-auth' },
+  });
+  return _sb;
+}
+
+const TABLES = {
+  people:      'pp_people',
+  bills:       'pp_bills',
+  shares:      'pp_shares',
+  instalments: 'pp_instalments',
+  paymentsIn:  'pp_payments_in',
+  paymentsOut: 'pp_payments_out',
+};
+
+/**
+ * Load the whole ledger in one go.
+ *
+ * A household's worth of bills is small — tens of rows, not thousands —
+ * and the cross-bill views (This month, Cashflow) need everything anyway.
+ * Fetching the lot once and computing in the browser is far simpler than
+ * per-screen queries, and makes every screen instant after first load.
+ */
+async function loadAll(sb) {
+  const [people, bills, shares, instalments, paymentsIn, paymentsOut] = await Promise.all([
+    sb.from(TABLES.people).select('*').order('sort').order('name'),
+    sb.from(TABLES.bills).select('*').order('purchase_date', { ascending: false, nullsFirst: false }),
+    sb.from(TABLES.shares).select('*'),
+    sb.from(TABLES.instalments).select('*'),
+    sb.from(TABLES.paymentsIn).select('*'),
+    sb.from(TABLES.paymentsOut).select('*'),
+  ]);
+
+  const firstErr = [people, bills, shares, instalments, paymentsIn, paymentsOut].find(r => r.error);
+  if (firstErr) throw new Error(firstErr.error.message);
+
+  return {
+    people:      people.data      || [],
+    bills:       bills.data       || [],
+    shares:      shares.data      || [],
+    instalments: instalments.data || [],
+    paymentsIn:  paymentsIn.data  || [],
+    paymentsOut: paymentsOut.data || [],
+  };
+}
+
+/* ════════════════════════════════════════════════════════════
+   SHARED UI ATOMS
+   ════════════════════════════════════════════════════════════ */
+
+function Avatar({ person, sm }) {
+  const c = paletteFor(person);
+  return (
+    <div className={'avatar' + (sm ? ' sm' : '')}
+         style={{ background: c.bg, borderColor: c.bd, color: c.fg }}>
+      {person?.emoji || initials(person?.name)}
+    </div>
+  );
+}
+
+function Stat({ label, value, sub, tone, wide }) {
+  const cls = tone === 'pos' ? 'v-pos' : tone === 'neg' ? 'v-neg' : tone === 'mut' ? 'v-mut' : '';
+  return (
+    <div className={'stat' + (wide ? ' wide' : '')}>
+      <div className="s-label">{label}</div>
+      <div className={'s-value ' + cls}>{value}</div>
+      {sub ? <div className="s-sub">{sub}</div> : null}
+    </div>
+  );
+}
+
+function Progress({ pct, tone }) {
+  return (
+    <div className="prog-bar">
+      <div className={'prog-fill' + (tone ? ' ' + tone : '')}
+           style={{ width: Math.max(0, Math.min(100, pct)) + '%' }} />
+    </div>
+  );
+}
+
+function Empty({ icon, title, children }) {
+  return (
+    <div className="empty">
+      <div className="eicon">{icon}</div>
+      <h3>{title}</h3>
+      <p>{children}</p>
+    </div>
+  );
+}
+
+function Sheet({ title, sub, onClose, children }) {
+  // Close on backdrop tap only — a tap inside the sheet must not bubble out.
+  return (
+    <div className="sheet-back" onClick={onClose}>
+      <div className="sheet" onClick={e => e.stopPropagation()}>
+        <div className="sheet-title">{title}</div>
+        {sub ? <div className="sheet-sub">{sub}</div> : null}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, hint, children }) {
+  return (
+    <div className="field">
+      {label ? <label className="label">{label}</label> : null}
+      {children}
+      {hint ? <div className="hint">{hint}</div> : null}
+    </div>
+  );
+}
+
+// Horizontal bar for the cashflow view. Positive and negative share a
+// baseline so the shape of a month is readable at a glance.
+function MiniBar({ value, max, tone }) {
+  const pct = max > 0 ? Math.min(100, Math.round((Math.abs(value) / max) * 100)) : 0;
+  const colour = tone === 'in' ? 'var(--success)' : tone === 'out' ? 'var(--danger)' : 'var(--primary)';
+  return (
+    <div style={{ height: 7, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+      <div style={{ height: '100%', width: pct + '%', background: colour, borderRadius: 4, transition: 'width .35s' }} />
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   LOGIN
+   ════════════════════════════════════════════════════════════ */
+
+function LoginScreen({ onSignedIn }) {
+  const [email, setEmail]   = useState('');
+  const [pw, setPw]         = useState('');
+  const [busy, setBusy]     = useState(false);
+  const [error, setError]   = useState('');
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true); setError('');
+    try {
+      const sb = await initSb();
+      const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw });
+      if (error) throw error;
+      onSignedIn(data.user);
+    } catch (err) {
+      setError(err.message || 'Could not sign in');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="login-wrap">
+      <div style={{ fontSize: 46, marginBottom: 10 }}>📊</div>
+      <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Payment Plans</div>
+      <div style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 26, textAlign: 'center' }}>
+        Split a big bill and track what comes back
+      </div>
+      <form onSubmit={submit} style={{ width: '100%', maxWidth: 320 }}>
+        <Field label="Email">
+          <input className="input" type="email" autoComplete="username"
+                 value={email} onChange={e => setEmail(e.target.value)} required />
+        </Field>
+        <Field label="Password">
+          <input className="input" type="password" autoComplete="current-password"
+                 value={pw} onChange={e => setPw(e.target.value)} required />
+        </Field>
+        {error ? <div className="notice notice-danger" style={{ margin: '0 0 14px' }}>{error}</div> : null}
+        <button className="btn btn-primary btn-full" disabled={busy}>
+          {busy ? <span className="spin" /> : 'Sign in'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   ROOT APP
+   ════════════════════════════════════════════════════════════ */
+
+const TABS = [
+  { key: 'bills',  icon: '🧾', label: 'Bills'   },
+  { key: 'month',  icon: '📅', label: 'Month'   },
+  { key: 'cash',   icon: '📈', label: 'Cashflow'},
+  { key: 'people', icon: '👥', label: 'People'  },
+];
+
+function App() {
+  const [ready,     setReady]     = useState(false);
+  const [initError, setInitError] = useState(null);
+  const [user,      setUser]      = useState(null);
+  const [isMember,  setIsMember]  = useState(true);
+  const [data,      setData]      = useState(null);
+  const [tab,       setTab]       = useState('bills');
+  const [overlay,   setOverlay]   = useState(null);   // { name, id }
+  const [toastMsg,  setToastMsg]  = useState(null);
+  const [isDark,    setIsDark]    = useState(() => {
+    const stored = localStorage.getItem('theme');
+    if (stored) return stored === 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+  const toastRef = useRef();
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDark);
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  }, [isDark]);
+
+  const showToast = useCallback((msg, ms = 2600) => {
+    setToastMsg(msg);
+    clearTimeout(toastRef.current);
+    toastRef.current = setTimeout(() => setToastMsg(null), ms);
+  }, []);
+
+  const reload = useCallback(async () => {
+    const sb = await initSb();
+    setData(await loadAll(sb));
+  }, []);
+
+  // ── Boot ───────────────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const sb = await initSb();
+        const { data: { session } } = await sb.auth.getSession();
+        if (session?.user) {
+          setUser(session.user);
+          // RLS returns zero rows rather than an error for a non-member,
+          // so membership is checked explicitly instead of being inferred
+          // from an app that merely looks empty.
+          const { data: members } = await sb.from('pp_members').select('email');
+          if (!members || !members.length) { setIsMember(false); setReady(true); return; }
+          await reload();
+        }
+        setReady(true);
+      } catch (err) {
+        setInitError(err.message || String(err));
+        setReady(true);
+      }
+    })();
+  }, [reload]);
+
+  async function onSignedIn(u) {
+    setUser(u);
+    try {
+      const sb = await initSb();
+      const { data: members } = await sb.from('pp_members').select('email');
+      if (!members || !members.length) { setIsMember(false); return; }
+      await reload();
+    } catch (err) {
+      setInitError(err.message || String(err));
+    }
+  }
+
+  async function signOut() {
+    const sb = await initSb();
+    await sb.auth.signOut();
+    setUser(null); setData(null); setOverlay(null); setTab('bills');
+  }
+
+  // ── Derived ────────────────────────────────────────────────
+  const ctx = useMemo(() => {
+    if (!data) return null;
+    const peopleById = {};
+    data.people.forEach(p => { peopleById[p.id] = p; });
+    return { ...data, peopleById };
+  }, [data]);
+
+  const billStats = useMemo(() => {
+    if (!ctx) return [];
+    return ctx.bills.map(b => computeBill(b, ctx));
+  }, [ctx]);
+
+  // ── Render gates ───────────────────────────────────────────
+  if (!ready) {
+    return (
+      <div className="login-wrap">
+        <span className="spin" />
+      </div>
+    );
+  }
+
+  if (initError) {
+    return (
+      <div className="login-wrap">
+        <div className="notice notice-danger" style={{ margin: 0 }}>
+          <strong>Couldn't start.</strong><br />{initError}
+        </div>
+        <button className="btn btn-ghost" style={{ marginTop: 16 }}
+                onClick={() => location.reload()}>Try again</button>
+      </div>
+    );
+  }
+
+  if (!user) return <LoginScreen onSignedIn={onSignedIn} />;
+
+  if (!isMember) {
+    return (
+      <div className="login-wrap">
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>No access</div>
+        <div style={{ fontSize: 14, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.5, maxWidth: 300 }}>
+          <strong>{user.email}</strong> isn't a member of this ledger. Add the address
+          to <code>pp_members</code> to grant access.
+        </div>
+        <button className="btn btn-ghost" style={{ marginTop: 20 }} onClick={signOut}>Sign out</button>
+      </div>
+    );
+  }
+
+  if (!ctx) {
+    return <div className="login-wrap"><span className="spin" /></div>;
+  }
+
+  const shared = { ctx, billStats, reload, showToast, setOverlay, isDark,
+                   toggleDark: () => setIsDark(d => !d) };
+
+  // ── Overlays take the whole screen ─────────────────────────
+  let body = null;
+  if (overlay?.name === 'bill') {
+    const stat = billStats.find(s => s.bill.id === overlay.id);
+    body = stat
+      ? <BillDetailScreen {...shared} stat={stat} onBack={() => setOverlay(null)} />
+      : <Empty icon="🤷" title="Bill not found">It may have been deleted.</Empty>;
+  } else if (overlay?.name === 'editBill') {
+    body = <BillFormScreen {...shared} billId={overlay.id} onBack={() => setOverlay(overlay.id ? { name: 'bill', id: overlay.id } : null)} />;
+  } else if (tab === 'bills') {
+    body = <BillsScreen {...shared} onSignOut={signOut} user={user} />;
+  } else if (tab === 'month') {
+    body = <MonthScreen {...shared} />;
+  } else if (tab === 'cash') {
+    body = <CashflowScreen {...shared} />;
+  } else {
+    body = <PeopleScreen {...shared} onSignOut={signOut} user={user} />;
+  }
+
+  const showNav = !overlay;
+
+  return (
+    <>
+      {body}
+      {showNav ? (
+        <nav className="nav">
+          {TABS.map(t => (
+            <button key={t.key}
+                    className={'nav-item' + (tab === t.key ? ' on' : '')}
+                    onClick={() => setTab(t.key)}>
+              <div className="ni">{t.icon}</div>
+              <div className="nl">{t.label}</div>
+            </button>
+          ))}
+        </nav>
+      ) : null}
+      {toastMsg ? <div className="toast">{toastMsg}</div> : null}
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   BILLS
+   ════════════════════════════════════════════════════════════ */
+
+function BillsScreen({ ctx, billStats, setOverlay, isDark, toggleDark }) {
+  const [showArchived, setShowArchived] = useState(false);
+
+  const active   = billStats.filter(s => s.bill.status === 'active');
+  const settled  = billStats.filter(s => s.bill.status === 'settled');
+  const archived = billStats.filter(s => s.bill.status === 'archived');
+
+  // Headline position across every active bill.
+  const totals = active.reduce((a, s) => ({
+    outstanding: a.outstanding + s.outstandingP,
+    arrears:     a.arrears     + s.arrearsP,
+    net:         a.net         + s.netP,
+    stillToPay:  a.stillToPay  + s.stillToPayP,
+  }), { outstanding: 0, arrears: 0, net: 0, stillToPay: 0 });
+
+  const visible = showArchived ? [...active, ...settled, ...archived] : [...active, ...settled];
+
+  return (
+    <div className="scroll-pad">
+      <header className="header">
+        <div className="header-title">Payment Plans</div>
+        <button className="btn btn-icon btn-ghost" onClick={toggleDark}
+                title={isDark ? 'Light mode' : 'Dark mode'}>{isDark ? '☀️' : '🌙'}</button>
+        <button className="btn btn-primary btn-sm" onClick={() => setOverlay({ name: 'editBill', id: null })}>
+          + New bill
+        </button>
+      </header>
+
+      {billStats.length ? (
+        <div className="stat-grid">
+          <Stat label="Owed to me"
+                value={fmtPShort(totals.outstanding)}
+                sub={active.length + ' active bill' + (active.length === 1 ? '' : 's')}
+                tone={totals.outstanding > 0 ? '' : 'mut'} />
+          <Stat label="Overdue"
+                value={fmtPShort(totals.arrears)}
+                sub={totals.arrears > 0 ? 'behind schedule' : 'all on track'}
+                tone={totals.arrears > 0 ? 'neg' : 'pos'} />
+          <Stat label="My position" wide
+                value={fmtSigned(totals.net)}
+                sub={totals.net < 0
+                      ? 'out of pocket right now'
+                      : 'received more than I have paid out so far'}
+                tone={totals.net < 0 ? 'neg' : 'pos'} />
+          {totals.stillToPay > 0 ? (
+            <Stat label="Left to pay out" wide
+                  value={fmtPShort(totals.stillToPay)}
+                  sub="still to clear on active bills"
+                  tone="mut" />
+          ) : null}
+        </div>
+      ) : null}
+
+      {!billStats.length ? (
+        <Empty icon="🧾" title="No bills yet">
+          Add a big purchase or a holiday, split it between people, and
+          set up a monthly plan to track what comes back.
+        </Empty>
+      ) : null}
+
+      {visible.map(s => (
+        <BillCard key={s.bill.id} stat={s} onClick={() => setOverlay({ name: 'bill', id: s.bill.id })} />
+      ))}
+
+      {archived.length && !showArchived ? (
+        <div style={{ padding: '4px 20px 20px' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowArchived(true)}>
+            Show {archived.length} archived
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BillCard({ stat, onClick }) {
+  const b = stat.bill;
+  const settled  = b.status === 'settled';
+  const archived = b.status === 'archived';
+
+  const tone = stat.arrearsP > 0 ? 'late' : stat.fullyRecovered ? 'done' : '';
+
+  // The most useful single line under a bill: who's next, and when.
+  // Only people who still owe something can have a "next payment".
+  const nextDue = stat.others
+    .flatMap(p => (p.nextDue && p.outstandingP > 0) ? [{ p, due: p.nextDue }] : [])
+    .sort((a, b2) => a.due.due_date.localeCompare(b2.due.due_date))[0];
+
+  return (
+    <div className="card card-tap" onClick={onClick} style={archived ? { opacity: .6 } : null}>
+      <div className="bill-top">
+        <div className="bill-emoji">{categoryEmoji(b.category)}</div>
+        <div className="bill-name">
+          <div className="bn">{b.title}</div>
+          <div className="bm">
+            {b.vendor ? b.vendor + ' · ' : ''}{fmtDate(b.purchase_date)}
+            {stat.others.length ? ` · ${stat.others.length} ${stat.others.length === 1 ? 'person' : 'people'}` : ''}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div className="bill-amt">{fmtPShort(stat.totalP)}</div>
+          {stat.arrearsP > 0 ? <span className="badge badge-late" style={{ marginTop: 4 }}>Overdue</span>
+            : settled ? <span className="badge badge-done" style={{ marginTop: 4 }}>Settled</span>
+            : stat.fullyRecovered ? <span className="badge badge-done" style={{ marginTop: 4 }}>Recovered</span>
+            : null}
+        </div>
+      </div>
+
+      <Progress pct={stat.recoveredPct} tone={tone} />
+
+      <div className="bill-foot">
+        <span>{fmtP(stat.receivedP)} of {fmtP(stat.owedToMeP)} back</span>
+        <span>
+          {stat.outstandingP > 0
+            ? (nextDue ? `${nextDue.p.person.name} ${relativeDue(nextDue.due.due_date)}` : 'no schedule set')
+            : 'all in'}
+        </span>
+      </div>
+
+      {stat.unallocatedP !== 0 ? (
+        <div className="notice notice-warn" style={{ margin: '10px 0 0' }}>
+          {stat.unallocatedP > 0
+            ? `${fmtP(stat.unallocatedP)} of this bill isn't assigned to anyone.`
+            : `Shares exceed the bill total by ${fmtP(-stat.unallocatedP)}.`}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   BILL FORM  —  create or edit
+   ════════════════════════════════════════════════════════════ */
+
+const SPLIT_MODES = [
+  { key: 'equal',   label: 'Split equally', hint: 'Everyone selected pays the same.' },
+  { key: 'percent', label: 'By percentage', hint: 'Set a % for anyone you want. Leave a person blank and they split whatever is left, equally.' },
+  { key: 'fixed',   label: 'Set amounts',   hint: 'Type an exact amount for anyone you want. Leave a person blank and they split whatever is left, equally.' },
+];
+
+function BillFormScreen({ ctx, reload, showToast, billId, onBack, setOverlay }) {
+  const editing  = !!billId;
+  const existing = editing ? ctx.bills.find(b => b.id === billId) : null;
+
+  const [title,   setTitle]   = useState(existing?.title    || '');
+  const [cat,     setCat]     = useState(existing?.category || 'purchase');
+  const [vendor,  setVendor]  = useState(existing?.vendor   || '');
+  const [total,   setTotal]   = useState(existing ? String(existing.total_amount) : '');
+  const [pDate,   setPDate]   = useState(existing?.purchase_date || todayISO());
+  const [notes,   setNotes]   = useState(existing?.notes || '');
+
+  // Existing shares seed the split editor when editing.
+  const existingShares = useMemo(
+    () => editing ? ctx.shares.filter(s => s.bill_id === billId) : [],
+    [ctx.shares, billId, editing]
+  );
+
+  const [mode, setMode] = useState(() => {
+    const t = existingShares.find(s => s.share_type !== 'equal');
+    return t ? t.share_type : 'equal';
+  });
+
+  const [selected, setSelected] = useState(() => existingShares.map(s => s.person_id));
+  const [values,   setValues]   = useState(() => {
+    const v = {};
+    existingShares.forEach(s => {
+      if (s.share_type !== 'equal' && s.share_value != null) v[s.person_id] = String(s.share_value);
+    });
+    return v;
+  });
+
+  const [months,  setMonths]  = useState(existing?.plan_months ? String(existing.plan_months) : '6');
+  const [start,   setStart]   = useState(monthKey(existing?.plan_start || todayISO()));
+  const [dueDay,  setDueDay]  = useState(String(existing?.plan_due_day || 1));
+  const [makePlan, setMakePlan] = useState(!editing);
+
+  const [busy, setBusy]   = useState(false);
+  const [err,  setErr]    = useState('');
+  const [addingPerson, setAddingPerson] = useState(false);
+
+  const activePeople = ctx.people.filter(p => !p.archived);
+  const totalP = toPence(total);
+
+  // Live resolution — the preview under each person is the exact number
+  // that will be written, not an approximation of it.
+  const preview = useMemo(() => {
+    const defs = selected.map(id => {
+      const raw = values[id];
+      const has = raw !== undefined && raw !== '' && Number.isFinite(Number(raw));
+      if (mode === 'equal' || !has) return { person_id: id, share_type: 'equal', share_value: null };
+      return { person_id: id, share_type: mode, share_value: Number(raw) };
+    });
+    return { defs, ...resolveShares(totalP, defs) };
+  }, [selected, values, mode, totalP]);
+
+  const monthsN = Math.max(1, Math.min(120, parseInt(months, 10) || 1));
+
+  function togglePerson(id) {
+    setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  }
+
+  async function quickAddPerson(name) {
+    const sb = await initSb();
+    const { data, error } = await sb.from(TABLES.people)
+      .insert({ name: name.trim(), colour_idx: ctx.people.length % PALETTE.length })
+      .select().single();
+    if (error) { showToast('Could not add: ' + error.message); return; }
+    await reload();
+    setSelected(s => [...s, data.id]);
+    setAddingPerson(false);
+  }
+
+  async function save() {
+    if (!title.trim())   { setErr('Give the bill a name.'); return; }
+    if (totalP <= 0)     { setErr('Enter the total amount.'); return; }
+    if (!selected.length){ setErr('Choose at least one person to split this between.'); return; }
+
+    setBusy(true); setErr('');
+    try {
+      const sb = await initSb();
+      const planStart = makePlan ? start + '-01' : (existing?.plan_start || null);
+
+      const row = {
+        title: title.trim(),
+        category: cat,
+        vendor: vendor.trim() || null,
+        total_amount: toPounds(totalP),
+        purchase_date: pDate || null,
+        notes: notes.trim() || null,
+        plan_start: planStart,
+        plan_months: makePlan ? monthsN : (existing?.plan_months || null),
+        plan_due_day: Math.min(28, Math.max(1, parseInt(dueDay, 10) || 1)),
+      };
+
+      let id = billId;
+      if (editing) {
+        const { error } = await sb.from(TABLES.bills).update(row).eq('id', id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await sb.from(TABLES.bills).insert(row).select().single();
+        if (error) throw error;
+        id = data.id;
+      }
+
+      // Shares are replaced wholesale. They are pure derived config —
+      // no history hangs off them — so a delete-and-reinsert is both
+      // simpler and less error-prone than diffing.
+      await sb.from(TABLES.shares).delete().eq('bill_id', id);
+      const shareRows = preview.defs.map(d => ({
+        bill_id: id,
+        person_id: d.person_id,
+        share_type: d.share_type,
+        share_value: d.share_type === 'equal' ? null : d.share_value,
+        amount_owed: toPounds(preview.amounts[d.person_id] || 0),
+      }));
+      if (shareRows.length) {
+        const { error } = await sb.from(TABLES.shares).insert(shareRows);
+        if (error) throw error;
+      }
+
+      if (makePlan) {
+        await rebuildSchedule(sb, id, shareRows, ctx.peopleById, planStart, monthsN, row.plan_due_day);
+      }
+
+      await reload();
+      showToast(editing ? 'Bill updated' : 'Bill created');
+      setOverlay({ name: 'bill', id });
+    } catch (e) {
+      setErr(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // The headline "roughly £X a month" is what OTHERS pay, so the ledger
+  // owner's own share is excluded — it never goes on a schedule.
+  const recoverableP = preview.defs
+    .filter(d => !ctx.peopleById[d.person_id]?.is_me)
+    .reduce((a, d) => a + (preview.amounts[d.person_id] || 0), 0);
+  const perMonthPreview = splitOverMonths(recoverableP, monthsN)[0];
+
+  return (
+    <div className="scroll-pad">
+      <header className="header">
+        <button className="btn btn-icon btn-ghost" onClick={onBack}>←</button>
+        <div className="header-title">{editing ? 'Edit bill' : 'New bill'}</div>
+        <button className="btn btn-primary btn-sm" onClick={save} disabled={busy}>
+          {busy ? <span className="spin" style={{ width: 14, height: 14 }} /> : 'Save'}
+        </button>
+      </header>
+
+      <div style={{ padding: '16px 20px 0' }}>
+        <Field label="What is it?">
+          <input className="input" value={title} placeholder="Croatia 2027"
+                 onChange={e => setTitle(e.target.value)} />
+        </Field>
+
+        <Field label="Category">
+          <div className="chip-row">
+            {CATEGORIES.map(c => (
+              <span key={c.key}
+                    className={'chip ' + (cat === c.key ? '' : 'chip-off')}
+                    style={cat === c.key ? { background: 'var(--primary-light)', borderColor: 'var(--primary)', color: 'var(--primary)' } : null}
+                    onClick={() => setCat(c.key)}>
+                {c.emoji} {c.label}
+              </span>
+            ))}
+          </div>
+        </Field>
+
+        <div className="field-row">
+          <Field label="Total amount">
+            <input className="input input-money" inputMode="decimal" value={total} placeholder="0.00"
+                   onChange={e => setTotal(e.target.value)} />
+          </Field>
+          <Field label="Date">
+            <input className="input" type="date" value={pDate} onChange={e => setPDate(e.target.value)} />
+          </Field>
+        </div>
+
+        <Field label="Paid to (optional)">
+          <input className="input" value={vendor} placeholder="Jet2 Holidays"
+                 onChange={e => setVendor(e.target.value)} />
+        </Field>
+      </div>
+
+      <div className="section-hdr">Who's splitting it</div>
+      <div style={{ padding: '4px 20px 0' }}>
+        <div className="chip-row">
+          {activePeople.map(p => {
+            const on = selected.includes(p.id);
+            const c  = paletteFor(p);
+            return (
+              <span key={p.id}
+                    className={'chip ' + (on ? '' : 'chip-off')}
+                    style={on ? { background: c.bg, borderColor: c.bd, color: c.fg } : null}
+                    onClick={() => togglePerson(p.id)}>
+                {p.emoji ? p.emoji + ' ' : ''}{p.name}{p.is_me ? ' (me)' : ''}
+              </span>
+            );
+          })}
+          <span className="chip chip-off" onClick={() => setAddingPerson(true)}>+ Add</span>
+        </div>
+      </div>
+
+      {selected.length ? (
+        <>
+          <div className="section-hdr">How it splits</div>
+          <div style={{ padding: '4px 20px 0' }}>
+            <div className="chip-row" style={{ marginBottom: 10 }}>
+              {SPLIT_MODES.map(m => (
+                <span key={m.key}
+                      className={'chip ' + (mode === m.key ? '' : 'chip-off')}
+                      style={mode === m.key ? { background: 'var(--primary-light)', borderColor: 'var(--primary)', color: 'var(--primary)' } : null}
+                      onClick={() => setMode(m.key)}>
+                  {m.label}
+                </span>
+              ))}
+            </div>
+            <div className="hint" style={{ marginBottom: 12 }}>
+              {SPLIT_MODES.find(m => m.key === mode).hint}
+            </div>
+          </div>
+
+          {selected.map(id => {
+            const p = ctx.peopleById[id];
+            if (!p) return null;
+            const amt = preview.amounts[id] || 0;
+            return (
+              <div className="list-row" key={id}>
+                <Avatar person={p} />
+                <div className="lr-main">
+                  <div className="lr-title">{p.name}{p.is_me ? ' (me)' : ''}</div>
+                  <div className="lr-sub">
+                    {mode === 'equal' ? 'Equal share'
+                      : (values[id] ? (mode === 'percent' ? values[id] + '% of the bill' : 'Fixed amount')
+                                    : 'Equal share of what\'s left')}
+                  </div>
+                </div>
+                {mode !== 'equal' ? (
+                  <input className="input input-money" inputMode="decimal"
+                         style={{ width: 86, padding: '7px 9px', fontSize: 14 }}
+                         placeholder={mode === 'percent' ? '%' : '£'}
+                         value={values[id] ?? ''}
+                         onChange={e => setValues(v => ({ ...v, [id]: e.target.value }))} />
+                ) : null}
+                <div className="lr-amt" style={{ minWidth: 76, textAlign: 'right' }}>{fmtP(amt)}</div>
+              </div>
+            );
+          })}
+
+          {preview.unallocated !== 0 || preview.over ? (
+            <div className={'notice ' + (preview.over || preview.unallocated < 0 ? 'notice-danger' : 'notice-warn')}>
+              {preview.over
+                ? `The amounts you've set come to more than the bill total. The people on an equal share get nothing.`
+                : preview.unallocated > 0
+                  ? `${fmtP(preview.unallocated)} isn't assigned to anyone. Add someone on an equal share, or raise the amounts.`
+                  : `Shares come to ${fmtP(-preview.unallocated)} more than the bill total.`}
+            </div>
+          ) : (
+            <div className="notice notice-info">
+              Splits exactly: {fmtP(preview.allocated)} allocated across {selected.length} {selected.length === 1 ? 'person' : 'people'}.
+            </div>
+          )}
+        </>
+      ) : null}
+
+      <div className="section-hdr">Monthly plan</div>
+      <div style={{ padding: '4px 20px 0' }}>
+        {editing ? (
+          <label className="list-row" style={{ padding: '10px 0', cursor: 'pointer' }}>
+            <input type="checkbox" checked={makePlan} onChange={e => setMakePlan(e.target.checked)}
+                   style={{ width: 18, height: 18 }} />
+            <div className="lr-main">
+              <div className="lr-title">Rebuild the schedule</div>
+              <div className="lr-sub">Replaces every instalment on this bill. Skipped months and hand-edited amounts are lost.</div>
+            </div>
+          </label>
+        ) : null}
+
+        {makePlan ? (
+          <>
+            <div className="field-row">
+              <Field label="Over">
+                <input className="input" inputMode="numeric" value={months}
+                       onChange={e => setMonths(e.target.value)} />
+              </Field>
+              <Field label="Starting">
+                <input className="input" type="month" value={start}
+                       onChange={e => setStart(e.target.value)} />
+              </Field>
+              <Field label="Due day">
+                <input className="input" inputMode="numeric" value={dueDay}
+                       onChange={e => setDueDay(e.target.value)} />
+              </Field>
+            </div>
+            <div className="hint" style={{ marginTop: -8, marginBottom: 16 }}>
+              {monthsN} monthly instalment{monthsN === 1 ? '' : 's'} from {fmtMonth(start + '-01', true)},
+              due on the {dueDay || 1}{['st','nd','rd'][(parseInt(dueDay,10)||1) % 10 - 1] && (parseInt(dueDay,10)||1) < 11 ? ['st','nd','rd'][(parseInt(dueDay,10)||1) % 10 - 1] : 'th'} of each month.
+              Capped at the 28th so no month is ever skipped.
+              {preview.allocated > 0 ? ` Roughly ${fmtP(perMonthPreview)} a month coming in.` : ''}
+            </div>
+          </>
+        ) : null}
+
+        <Field label="Notes (optional)">
+          <textarea className="input" value={notes} onChange={e => setNotes(e.target.value)}
+                    placeholder="Deposit paid on the Amex, balance due 8 weeks before travel…" />
+        </Field>
+      </div>
+
+      {err ? <div className="notice notice-danger">{err}</div> : null}
+
+      <div style={{ padding: '4px 20px 28px' }}>
+        <button className="btn btn-primary btn-full" onClick={save} disabled={busy}>
+          {busy ? <span className="spin" /> : (editing ? 'Save changes' : 'Create bill')}
+        </button>
+      </div>
+
+      {addingPerson ? (
+        <QuickAddPerson onClose={() => setAddingPerson(false)} onAdd={quickAddPerson} />
+      ) : null}
+    </div>
+  );
+}
+
+function QuickAddPerson({ onClose, onAdd }) {
+  const [name, setName] = useState('');
+  return (
+    <Sheet title="Add a person" sub="Someone who owes you money on a bill." onClose={onClose}>
+      <Field label="Name">
+        <input className="input" autoFocus value={name} onChange={e => setName(e.target.value)}
+               onKeyDown={e => { if (e.key === 'Enter' && name.trim()) onAdd(name); }} />
+      </Field>
+      <button className="btn btn-primary btn-full" disabled={!name.trim()} onClick={() => onAdd(name)}>
+        Add
+      </button>
+    </Sheet>
+  );
+}
+
+/**
+ * Replace every instalment on a bill with a freshly generated schedule.
+ *
+ * The ledger owner is skipped: their share is money they were never going
+ * to pay themselves, so putting it on a repayment schedule would invent
+ * arrears that don't exist.
+ */
+async function rebuildSchedule(sb, billId, shareRows, peopleById, startISO, months, dueDay) {
+  await sb.from(TABLES.instalments).delete().eq('bill_id', billId);
+
+  const rows = [];
+  shareRows.forEach(s => {
+    if (peopleById[s.person_id]?.is_me) return;
+    const amountP = toPence(s.amount_owed);
+    if (amountP <= 0) return;
+    splitOverMonths(amountP, months).forEach((partP, k) => {
+      rows.push({
+        bill_id: billId,
+        person_id: s.person_id,
+        seq: k + 1,
+        due_date: dueDateISO(startISO, k, dueDay),
+        amount: toPounds(partP),
+      });
+    });
+  });
+
+  if (rows.length) {
+    const { error } = await sb.from(TABLES.instalments).insert(rows);
+    if (error) throw error;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   BILL DETAIL
+   ════════════════════════════════════════════════════════════ */
+
+function BillDetailScreen({ ctx, stat, reload, showToast, setOverlay, onBack }) {
+  const [view, setView]   = useState('overview');
+  const [sheet, setSheet] = useState(null);   // { kind, ... }
+  const b = stat.bill;
+
+  async function patchBill(patch, msg) {
+    const sb = await initSb();
+    const { error } = await sb.from(TABLES.bills).update(patch).eq('id', b.id);
+    if (error) { showToast(error.message); return; }
+    await reload();
+    showToast(msg);
+  }
+
+  async function deleteBill() {
+    const sb = await initSb();
+    // Shares, instalments and payments all cascade from the bill row.
+    const { error } = await sb.from(TABLES.bills).delete().eq('id', b.id);
+    if (error) { showToast(error.message); return; }
+    await reload();
+    showToast('Bill deleted');
+    onBack();
+  }
+
+  return (
+    <div className="scroll-pad">
+      <header className="header">
+        <button className="btn btn-icon btn-ghost" onClick={onBack}>←</button>
+        <div className="header-sub">
+          <div className="htitle">{categoryEmoji(b.category)} {b.title}</div>
+          <div className="hdetail">
+            {fmtP(stat.totalP)}{b.vendor ? ' · ' + b.vendor : ''} · {fmtDate(b.purchase_date)}
+          </div>
+        </div>
+        <button className="btn btn-icon btn-ghost" onClick={() => setSheet({ kind: 'menu' })}>⋯</button>
+      </header>
+
+      <div className="tab-bar">
+        {[['overview','Overview'], ['schedule','Schedule'], ['money','Money']].map(([k, l]) => (
+          <div key={k} className={'tab' + (view === k ? ' on' : '')} onClick={() => setView(k)}>{l}</div>
+        ))}
+      </div>
+
+      {view === 'overview' ? <BillOverview stat={stat} setSheet={setSheet} /> : null}
+      {view === 'schedule' ? <BillSchedule ctx={ctx} stat={stat} setSheet={setSheet} /> : null}
+      {view === 'money'    ? <BillMoney    stat={stat} setSheet={setSheet} /> : null}
+
+      {sheet?.kind === 'menu' ? (
+        <Sheet title={b.title} sub="Bill actions" onClose={() => setSheet(null)}>
+          <button className="btn btn-ghost btn-full" style={{ marginBottom: 8 }}
+                  onClick={() => { setSheet(null); setOverlay({ name: 'editBill', id: b.id }); }}>
+            ✏️ Edit bill, split or plan
+          </button>
+          {b.status !== 'settled' ? (
+            <button className="btn btn-ghost btn-full" style={{ marginBottom: 8 }}
+                    onClick={() => { setSheet(null); patchBill({ status: 'settled' }, 'Marked as settled'); }}>
+              ✅ Mark as settled
+            </button>
+          ) : (
+            <button className="btn btn-ghost btn-full" style={{ marginBottom: 8 }}
+                    onClick={() => { setSheet(null); patchBill({ status: 'active' }, 'Reopened'); }}>
+              ↩️ Reopen bill
+            </button>
+          )}
+          {b.status !== 'archived' ? (
+            <button className="btn btn-ghost btn-full" style={{ marginBottom: 8 }}
+                    onClick={() => { setSheet(null); patchBill({ status: 'archived' }, 'Archived'); }}>
+              📦 Archive
+            </button>
+          ) : null}
+          <button className="btn btn-danger btn-full"
+                  onClick={() => setSheet({ kind: 'confirmDelete' })}>
+            🗑 Delete bill
+          </button>
+        </Sheet>
+      ) : null}
+
+      {sheet?.kind === 'confirmDelete' ? (
+        <Sheet title="Delete this bill?" onClose={() => setSheet(null)}
+               sub="The split, the schedule and every payment recorded against it go too. This cannot be undone.">
+          <button className="btn btn-danger btn-full" style={{ marginBottom: 8 }} onClick={deleteBill}>
+            Delete {b.title}
+          </button>
+          <button className="btn btn-ghost btn-full" onClick={() => setSheet(null)}>Cancel</button>
+        </Sheet>
+      ) : null}
+
+      {sheet?.kind === 'payIn' ? (
+        <PaymentInSheet stat={stat} preset={sheet} reload={reload} showToast={showToast}
+                        onClose={() => setSheet(null)} />
+      ) : null}
+
+      {sheet?.kind === 'payOut' ? (
+        <PaymentOutSheet stat={stat} existing={sheet.row} reload={reload} showToast={showToast}
+                         onClose={() => setSheet(null)} />
+      ) : null}
+
+      {sheet?.kind === 'instalment' ? (
+        <InstalmentSheet row={sheet.row} person={sheet.person} reload={reload} showToast={showToast}
+                         onClose={() => setSheet(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+function BillOverview({ stat, setSheet }) {
+  return (
+    <div>
+      <div className="stat-grid">
+        <Stat label="Owed to me" value={fmtPShort(stat.owedToMeP)}
+              sub={stat.myShareP ? `my share ${fmtP(stat.myShareP)} excluded` : 'across everyone'} />
+        <Stat label="Still outstanding" value={fmtPShort(stat.outstandingP)}
+              sub={stat.recoveredPct + '% recovered'}
+              tone={stat.outstandingP > 0 ? '' : 'pos'} />
+        <Stat label="Paid out" value={fmtPShort(stat.paidOutP)}
+              sub={stat.stillToPayP > 0 ? fmtP(stat.stillToPayP) + ' left to pay' : 'bill fully paid'} />
+        <Stat label="Received" value={fmtPShort(stat.receivedP)}
+              sub={stat.arrearsP > 0 ? fmtP(stat.arrearsP) + ' overdue' : 'everyone on track'}
+              tone={stat.receivedP > 0 ? 'pos' : 'mut'} />
+        <Stat label="My position on this bill" wide
+              value={fmtSigned(stat.netP)}
+              sub={stat.netP < 0
+                    ? `I'm ${fmtP(-stat.netP)} out of pocket until more comes in`
+                    : 'received more than paid out so far'}
+              tone={stat.netP < 0 ? 'neg' : 'pos'} />
+      </div>
+
+      {stat.unallocatedP !== 0 ? (
+        <div className="notice notice-warn">
+          {stat.unallocatedP > 0
+            ? `${fmtP(stat.unallocatedP)} of this bill isn't assigned to anyone — edit the bill to allocate it.`
+            : `Shares exceed the bill total by ${fmtP(-stat.unallocatedP)}.`}
+        </div>
+      ) : null}
+
+      {stat.others.some(p => p.unscheduledP > 0) ? (
+        <div className="notice notice-warn">
+          Some people owe more than their schedule covers — the amounts changed after
+          the plan was built. Edit the bill and rebuild the schedule to bring it back in line.
+        </div>
+      ) : null}
+
+      <div className="section-hdr">
+        <span>Who owes what</span>
+        <button className="btn btn-primary btn-sm" onClick={() => setSheet({ kind: 'payIn' })}>
+          + Record payment
+        </button>
+      </div>
+
+      {stat.people.map(p => (
+        <div className="list-row tap" key={p.person.id}
+             onClick={() => p.isMe ? null : setSheet({ kind: 'payIn', personId: p.person.id })}>
+          <Avatar person={p.person} />
+          <div className="lr-main">
+            <div className="lr-title">
+              {p.person.name}{p.isMe ? ' (me)' : ''}
+              {p.arrearsP > 0 ? <span className="badge badge-late" style={{ marginLeft: 6 }}>
+                {fmtP(p.arrearsP)} overdue</span> : null}
+            </div>
+            <div className="lr-sub" style={{ marginBottom: 5 }}>
+              {p.isMe
+                ? `My own share — not money I'm owed`
+                : `${fmtP(p.paidP)} of ${fmtP(p.owedP)} paid` +
+                  (p.nextDue && p.outstandingP > 0
+                    ? ` · next ${fmtP(toPence(p.nextDue.amount))} ${relativeDue(p.nextDue.due_date)}`
+                    : '')}
+            </div>
+            {!p.isMe ? <Progress pct={p.pct} tone={p.arrearsP > 0 ? 'late' : p.pct >= 100 ? 'done' : ''} /> : null}
+          </div>
+          <div style={{ textAlign: 'right', minWidth: 78 }}>
+            <div className="lr-amt">{fmtP(p.isMe ? p.owedP : p.outstandingP)}</div>
+            <div className="lr-sub">{p.isMe ? 'my share' : p.outstandingP > 0 ? 'left' : 'settled'}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BillSchedule({ ctx, stat, setSheet }) {
+  // Grouped by due month so the plan reads as "what lands when", which is
+  // the question the schedule actually answers.
+  const byMonth = {};
+  stat.instalments.forEach(i => {
+    const k = monthKey(i.due_date);
+    (byMonth[k] = byMonth[k] || []).push(i);
+  });
+  const monthKeys = Object.keys(byMonth).sort();
+  const today = todayISO();
+
+  if (!monthKeys.length) {
+    return (
+      <Empty icon="📅" title="No schedule yet">
+        Edit the bill and set up a monthly plan to see who pays what, and when.
+      </Empty>
+    );
+  }
+
+  return (
+    <div>
+      {monthKeys.map(k => {
+        const rows  = byMonth[k].sort((a, b) => a.due_date.localeCompare(b.due_date));
+        const live  = rows.filter(r => !r.waived);
+        const total = live.reduce((a, r) => a + toPence(r.amount), 0);
+        const past  = rows[0].due_date <= today;
+        return (
+          <div key={k}>
+            <div className="section-hdr">
+              <span>{fmtMonth(k + '-01', true)}</span>
+              <span style={{ textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums' }}>
+                {fmtP(total)}{past ? ' · due' : ''}
+              </span>
+            </div>
+            {rows.map(r => {
+              const person = ctx.peopleById[r.person_id];
+              return (
+                <div className="list-row tap" key={r.id}
+                     onClick={() => setSheet({ kind: 'instalment', row: r, person })}
+                     style={r.waived ? { opacity: .55 } : null}>
+                  <Avatar person={person} sm />
+                  <div className="lr-main">
+                    <div className="lr-title" style={r.waived ? { textDecoration: 'line-through' } : null}>
+                      {person?.name || 'Unknown'}
+                    </div>
+                    <div className="lr-sub">
+                      {fmtDate(r.due_date)} · {relativeDue(r.due_date)}
+                      {r.waived ? ' · skipped' : ''}{r.note ? ' · ' + r.note : ''}
+                    </div>
+                  </div>
+                  <div className="lr-amt" style={r.waived ? { textDecoration: 'line-through' } : null}>
+                    {fmtP(toPence(r.amount))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+      <div className="notice notice-info">
+        The schedule sets expectations — it isn't matched to payments. Someone can pay
+        three months at once, skip one, or pay a round number, and the balance still
+        comes out right.
+      </div>
+    </div>
+  );
+}
+
+function BillMoney({ stat, setSheet }) {
+  const ins  = [...stat.paysIn].sort((a, b) => b.paid_on.localeCompare(a.paid_on));
+  const outs = [...stat.paysOut].sort((a, b) => b.paid_on.localeCompare(a.paid_on));
+  const byId = {};
+  stat.people.forEach(p => { byId[p.person.id] = p.person; });
+
+  return (
+    <div>
+      <div className="stat-grid">
+        <Stat label="In" value={fmtPShort(stat.receivedP)} sub={ins.length + ' payment' + (ins.length === 1 ? '' : 's')} tone="pos" />
+        <Stat label="Out" value={fmtPShort(stat.paidOutP)} sub={outs.filter(o => !o.scheduled).length + ' payment' + (outs.filter(o => !o.scheduled).length === 1 ? '' : 's')} tone="neg" />
+        {stat.scheduledOutP > 0 ? (
+          <Stat label="Still committed to pay" wide value={fmtPShort(stat.scheduledOutP)}
+                sub="scheduled outgoings not yet made" tone="mut" />
+        ) : null}
+      </div>
+
+      <div className="section-hdr">
+        <span>Money in</span>
+        <button className="btn btn-primary btn-sm" onClick={() => setSheet({ kind: 'payIn' })}>+ Add</button>
+      </div>
+      {ins.length ? ins.map(p => (
+        <div className="list-row tap" key={p.id} onClick={() => setSheet({ kind: 'payIn', row: p })}>
+          <Avatar person={byId[p.person_id]} sm />
+          <div className="lr-main">
+            <div className="lr-title">{byId[p.person_id]?.name || 'Unknown'}</div>
+            <div className="lr-sub">{fmtDate(p.paid_on)}{p.method ? ' · ' + p.method : ''}{p.note ? ' · ' + p.note : ''}</div>
+          </div>
+          <div className="lr-amt v-pos">{fmtP(toPence(p.amount))}</div>
+        </div>
+      )) : <div className="hint" style={{ padding: '4px 20px 12px' }}>Nothing received yet.</div>}
+
+      <div className="section-hdr">
+        <span>Money out</span>
+        <button className="btn btn-primary btn-sm" onClick={() => setSheet({ kind: 'payOut' })}>+ Add</button>
+      </div>
+      {outs.length ? outs.map(p => (
+        <div className="list-row tap" key={p.id} onClick={() => setSheet({ kind: 'payOut', row: p })}>
+          <div style={{ fontSize: 18, width: 30, textAlign: 'center' }}>{p.scheduled ? '🗓' : '💸'}</div>
+          <div className="lr-main">
+            <div className="lr-title">{p.payee || 'Payment out'}</div>
+            <div className="lr-sub">
+              {fmtDate(p.paid_on)}{p.method ? ' · ' + p.method : ''}
+              {p.scheduled ? ' · scheduled' : ''}{p.note ? ' · ' + p.note : ''}
+            </div>
+          </div>
+          <div className={'lr-amt ' + (p.scheduled ? 'v-mut' : 'v-neg')}>−{fmtP(toPence(p.amount))}</div>
+        </div>
+      )) : <div className="hint" style={{ padding: '4px 20px 20px' }}>
+             Nothing paid out yet. Record what you actually pay — upfront, in
+             instalments, or as each stage falls due — and the position updates.
+           </div>}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   PAYMENT SHEETS
+   ════════════════════════════════════════════════════════════ */
+
+const METHODS_IN  = ['Bank transfer', 'Cash', 'Standing order', 'Other'];
+const METHODS_OUT = ['Debit card', 'Credit card', 'Bank transfer', 'Direct debit', 'Other'];
+
+function PaymentInSheet({ stat, preset, reload, showToast, onClose }) {
+  const row = preset?.row || null;
+  const [personId, setPersonId] = useState(
+    row?.person_id || preset?.personId || (stat.others[0]?.person.id ?? '')
+  );
+  const [amount, setAmount] = useState(row ? String(row.amount) : '');
+  const [date,   setDate]   = useState(row?.paid_on || todayISO());
+  const [method, setMethod] = useState(row?.method || 'Bank transfer');
+  const [note,   setNote]   = useState(row?.note || '');
+  const [busy,   setBusy]   = useState(false);
+
+  const p = stat.others.find(x => x.person.id === personId) || null;
+
+  // The two amounts actually worth one tap: what the plan says is due
+  // right now, and everything they still owe.
+  const dueNowP = p ? Math.max(0, p.dueToDateP - p.paidP) : 0;
+  const nextP   = p?.nextDue ? toPence(p.nextDue.amount) : 0;
+  const allP    = p ? Math.max(0, p.outstandingP) : 0;
+
+  const quick = [];
+  if (dueNowP > 0)                    quick.push(['Due now',        dueNowP]);
+  if (nextP > 0 && nextP !== dueNowP) quick.push(['Next instalment', nextP]);
+  if (allP > 0 && allP !== dueNowP)   quick.push(['Settle in full',  allP]);
+
+  async function save() {
+    const amtP = toPence(amount);
+    if (!personId) { showToast('Choose who paid'); return; }
+    if (!amtP)     { showToast('Enter an amount'); return; }
+    setBusy(true);
+    try {
+      const sb = await initSb();
+      const payload = {
+        bill_id: stat.bill.id, person_id: personId,
+        paid_on: date, amount: toPounds(amtP),
+        method: method || null, note: note.trim() || null,
+      };
+      const { error } = row
+        ? await sb.from(TABLES.paymentsIn).update(payload).eq('id', row.id)
+        : await sb.from(TABLES.paymentsIn).insert(payload);
+      if (error) throw error;
+      await reload();
+      showToast(row ? 'Payment updated' : `${fmtP(amtP)} recorded`);
+      onClose();
+    } catch (e) {
+      showToast(e.message || String(e));
+    } finally { setBusy(false); }
+  }
+
+  async function remove() {
+    setBusy(true);
+    const sb = await initSb();
+    const { error } = await sb.from(TABLES.paymentsIn).delete().eq('id', row.id);
+    if (error) { showToast(error.message); setBusy(false); return; }
+    await reload();
+    showToast('Payment removed');
+    onClose();
+  }
+
+  return (
+    <Sheet title={row ? 'Edit payment' : 'Record a payment in'}
+           sub={stat.bill.title} onClose={onClose}>
+      <Field label="From">
+        <div className="chip-row">
+          {stat.others.map(o => {
+            const on = o.person.id === personId;
+            const c  = paletteFor(o.person);
+            return (
+              <span key={o.person.id} className={'chip ' + (on ? '' : 'chip-off')}
+                    style={on ? { background: c.bg, borderColor: c.bd, color: c.fg } : null}
+                    onClick={() => setPersonId(o.person.id)}>
+                {o.person.emoji ? o.person.emoji + ' ' : ''}{o.person.name}
+              </span>
+            );
+          })}
+        </div>
+      </Field>
+
+      {p ? (
+        <div className="hint" style={{ marginTop: -8, marginBottom: 14 }}>
+          {fmtP(p.outstandingP)} outstanding of {fmtP(p.owedP)}
+          {p.arrearsP > 0 ? ` · ${fmtP(p.arrearsP)} overdue` : ''}
+        </div>
+      ) : null}
+
+      <Field label="Amount">
+        <input className="input input-money" inputMode="decimal" autoFocus
+               value={amount} placeholder="0.00" onChange={e => setAmount(e.target.value)} />
+      </Field>
+
+      {quick.length ? (
+        <div className="chip-row" style={{ marginTop: -8, marginBottom: 16 }}>
+          {quick.map(([label, v]) => (
+            <span key={label} className="chip chip-off"
+                  onClick={() => setAmount(toPounds(v).toFixed(2))}>
+              {label} · {fmtP(v)}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="field-row">
+        <Field label="Date">
+          <input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+        </Field>
+        <Field label="How">
+          <select className="input" value={method} onChange={e => setMethod(e.target.value)}>
+            {METHODS_IN.map(m => <option key={m}>{m}</option>)}
+          </select>
+        </Field>
+      </div>
+
+      <Field label="Note (optional)">
+        <input className="input" value={note} onChange={e => setNote(e.target.value)}
+               placeholder="Covers June and July" />
+      </Field>
+
+      <button className="btn btn-success btn-full" onClick={save} disabled={busy}>
+        {busy ? <span className="spin" /> : (row ? 'Save changes' : 'Record payment')}
+      </button>
+      {row ? (
+        <button className="btn btn-ghost btn-full" style={{ marginTop: 8 }} onClick={remove} disabled={busy}>
+          Delete this payment
+        </button>
+      ) : null}
+    </Sheet>
+  );
+}
+
+function PaymentOutSheet({ stat, existing, reload, showToast, onClose }) {
+  const row = existing || null;
+  const [amount,    setAmount]    = useState(row ? String(row.amount) : '');
+  const [date,      setDate]      = useState(row?.paid_on || todayISO());
+  const [payee,     setPayee]     = useState(row?.payee || stat.bill.vendor || '');
+  const [method,    setMethod]    = useState(row?.method || 'Credit card');
+  const [note,      setNote]      = useState(row?.note || '');
+  const [scheduled, setScheduled] = useState(!!row?.scheduled);
+  const [busy,      setBusy]      = useState(false);
+
+  const remainingP = stat.stillToPayP;
+
+  async function save() {
+    const amtP = toPence(amount);
+    if (!amtP) { showToast('Enter an amount'); return; }
+    setBusy(true);
+    try {
+      const sb = await initSb();
+      const payload = {
+        bill_id: stat.bill.id, paid_on: date, amount: toPounds(amtP),
+        payee: payee.trim() || null, method: method || null,
+        note: note.trim() || null, scheduled,
+      };
+      const { error } = row
+        ? await sb.from(TABLES.paymentsOut).update(payload).eq('id', row.id)
+        : await sb.from(TABLES.paymentsOut).insert(payload);
+      if (error) throw error;
+      await reload();
+      showToast(row ? 'Updated' : `${fmtP(amtP)} paid out recorded`);
+      onClose();
+    } catch (e) {
+      showToast(e.message || String(e));
+    } finally { setBusy(false); }
+  }
+
+  async function remove() {
+    setBusy(true);
+    const sb = await initSb();
+    const { error } = await sb.from(TABLES.paymentsOut).delete().eq('id', row.id);
+    if (error) { showToast(error.message); setBusy(false); return; }
+    await reload();
+    showToast('Removed');
+    onClose();
+  }
+
+  return (
+    <Sheet title={row ? 'Edit payment out' : 'Record a payment out'}
+           sub={`What I paid towards ${stat.bill.title}`} onClose={onClose}>
+      <Field label="Amount">
+        <input className="input input-money" inputMode="decimal" autoFocus
+               value={amount} placeholder="0.00" onChange={e => setAmount(e.target.value)} />
+      </Field>
+
+      {remainingP > 0 ? (
+        <div className="chip-row" style={{ marginTop: -8, marginBottom: 16 }}>
+          <span className="chip chip-off" onClick={() => setAmount(toPounds(remainingP).toFixed(2))}>
+            Pay the rest · {fmtP(remainingP)}
+          </span>
+          <span className="chip chip-off" onClick={() => setAmount(toPounds(stat.totalP).toFixed(2))}>
+            Whole bill · {fmtP(stat.totalP)}
+          </span>
+        </div>
+      ) : null}
+
+      <div className="field-row">
+        <Field label="Date">
+          <input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+        </Field>
+        <Field label="How">
+          <select className="input" value={method} onChange={e => setMethod(e.target.value)}>
+            {METHODS_OUT.map(m => <option key={m}>{m}</option>)}
+          </select>
+        </Field>
+      </div>
+
+      <Field label="Paid to">
+        <input className="input" value={payee} onChange={e => setPayee(e.target.value)}
+               placeholder="Jet2 Holidays" />
+      </Field>
+
+      <label className="list-row" style={{ padding: '10px 0', cursor: 'pointer', borderBottom: 'none' }}>
+        <input type="checkbox" checked={scheduled} onChange={e => setScheduled(e.target.checked)}
+               style={{ width: 18, height: 18 }} />
+        <div className="lr-main">
+          <div className="lr-title">Not paid yet — this is committed</div>
+          <div className="lr-sub">
+            Counts in the forward cashflow but not in what has actually left. Use it for
+            a card instalment or a balance you know is coming.
+          </div>
+        </div>
+      </label>
+
+      <Field label="Note (optional)">
+        <input className="input" value={note} onChange={e => setNote(e.target.value)}
+               placeholder="Deposit" />
+      </Field>
+
+      <button className="btn btn-primary btn-full" onClick={save} disabled={busy}>
+        {busy ? <span className="spin" /> : (row ? 'Save changes' : 'Record payment out')}
+      </button>
+      {row ? (
+        <button className="btn btn-ghost btn-full" style={{ marginTop: 8 }} onClick={remove} disabled={busy}>
+          Delete this payment
+        </button>
+      ) : null}
+    </Sheet>
+  );
+}
+
+function InstalmentSheet({ row, person, reload, showToast, onClose }) {
+  const [amount, setAmount] = useState(String(row.amount));
+  const [due,    setDue]    = useState(row.due_date);
+  const [note,   setNote]   = useState(row.note || '');
+  const [busy,   setBusy]   = useState(false);
+
+  async function patch(extra, msg) {
+    setBusy(true);
+    const sb = await initSb();
+    const { error } = await sb.from(TABLES.instalments)
+      .update({ amount: toPounds(toPence(amount)), due_date: due, note: note.trim() || null, ...extra })
+      .eq('id', row.id);
+    if (error) { showToast(error.message); setBusy(false); return; }
+    await reload();
+    showToast(msg);
+    onClose();
+  }
+
+  return (
+    <Sheet title={`${person?.name || 'Instalment'} — ${fmtMonth(row.due_date, true)}`}
+           sub="Adjust a single month without touching the rest of the plan."
+           onClose={onClose}>
+      <div className="field-row">
+        <Field label="Amount">
+          <input className="input input-money" inputMode="decimal"
+                 value={amount} onChange={e => setAmount(e.target.value)} />
+        </Field>
+        <Field label="Due">
+          <input className="input" type="date" value={due} onChange={e => setDue(e.target.value)} />
+        </Field>
+      </div>
+
+      <Field label="Note (optional)">
+        <input className="input" value={note} onChange={e => setNote(e.target.value)}
+               placeholder="Paying double next month instead" />
+      </Field>
+
+      <button className="btn btn-primary btn-full" style={{ marginBottom: 8 }}
+              onClick={() => patch({}, 'Instalment updated')} disabled={busy}>
+        Save
+      </button>
+      <button className="btn btn-ghost btn-full"
+              onClick={() => patch({ waived: !row.waived }, row.waived ? 'Month reinstated' : 'Month skipped')}
+              disabled={busy}>
+        {row.waived ? '↩️ Un-skip this month' : '⏭ Skip this month'}
+      </button>
+      <div className="hint" style={{ marginTop: 10 }}>
+        Skipping a month removes it from what's expected, so it never shows as
+        overdue. What they owe overall doesn't change.
+      </div>
+    </Sheet>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   THIS MONTH
+   The operational screen: what should land this month, what has,
+   and what I have to find myself.
+   ════════════════════════════════════════════════════════════ */
+
+// Last calendar day of a 'YYYY-MM' key, as an ISO date string. Used as an
+// inclusive upper bound when asking "what should be in by end of month".
+function endOfMonthISO(key) {
+  const nextFirst = shiftMonthKey(key, 1) + '-01';
+  const t = Date.parse(nextFirst + 'T00:00:00Z') - 86400000;
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+function MonthScreen({ ctx, billStats, reload, showToast, setOverlay }) {
+  const [key, setKey]     = useState(thisMonthKey());
+  const [sheet, setSheet] = useState(null);
+  const eom = endOfMonthISO(key);
+
+  const rows = [];
+  let expectedP = 0, shortfallP = 0;
+
+  billStats.filter(s => s.bill.status !== 'archived').forEach(s => {
+    s.others.forEach(p => {
+      const dueThisMonth = p.instalments
+        .filter(i => !i.waived && monthKey(i.due_date) === key)
+        .reduce((a, i) => a + toPence(i.amount), 0);
+
+      // What the whole plan says should have arrived by the end of this
+      // month, clamped to what they actually owe. Comparing that against
+      // everything they have ever paid is what makes a lump sum in March
+      // correctly cover April and May.
+      const dueThroughP = Math.min(
+        p.owedP,
+        p.instalments.filter(i => !i.waived && i.due_date <= eom)
+                     .reduce((a, i) => a + toPence(i.amount), 0)
+      );
+      const shortP = Math.max(0, dueThroughP - p.paidP);
+
+      if (dueThisMonth <= 0 && shortP <= 0) return;
+      expectedP  += dueThisMonth;
+      shortfallP += shortP;
+      rows.push({ stat: s, p, dueThisMonth, shortP, ahead: shortP === 0 });
+    });
+  });
+
+  rows.sort((a, b) => b.shortP - a.shortP || b.dueThisMonth - a.dueThisMonth);
+
+  const inP = ctx.paymentsIn
+    .filter(p => monthKey(p.paid_on) === key)
+    .reduce((a, p) => a + toPence(p.amount), 0);
+
+  const outActualP = ctx.paymentsOut
+    .filter(p => !p.scheduled && monthKey(p.paid_on) === key)
+    .reduce((a, p) => a + toPence(p.amount), 0);
+
+  const outPlannedP = ctx.paymentsOut
+    .filter(p => p.scheduled && monthKey(p.paid_on) === key)
+    .reduce((a, p) => a + toPence(p.amount), 0);
+
+  const isThisMonth = key === thisMonthKey();
+
+  return (
+    <div className="scroll-pad">
+      <header className="header">
+        <button className="btn btn-icon btn-ghost" onClick={() => setKey(k => shiftMonthKey(k, -1))}>‹</button>
+        <div className="header-title" style={{ textAlign: 'center' }}>{fmtMonth(key + '-01', true)}</div>
+        <button className="btn btn-icon btn-ghost" onClick={() => setKey(k => shiftMonthKey(k, 1))}>›</button>
+      </header>
+
+      {!isThisMonth ? (
+        <div style={{ padding: '10px 20px 0' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setKey(thisMonthKey())}>
+            Back to this month
+          </button>
+        </div>
+      ) : null}
+
+      <div className="stat-grid">
+        <Stat label="Due in" value={fmtPShort(expectedP)} sub="per the plans" />
+        <Stat label="Received" value={fmtPShort(inP)}
+              sub={inP >= expectedP && expectedP > 0 ? 'fully covered' : 'so far this month'}
+              tone={inP > 0 ? 'pos' : 'mut'} />
+        <Stat label="Paid out" value={fmtPShort(outActualP)}
+              sub={outPlannedP > 0 ? fmtP(outPlannedP) + ' more committed' : 'this month'}
+              tone={outActualP > 0 ? 'neg' : 'mut'} />
+        <Stat label="Net this month" value={fmtSigned(inP - outActualP)}
+              sub={inP - outActualP < 0 ? 'more out than in' : 'more in than out'}
+              tone={inP - outActualP < 0 ? 'neg' : 'pos'} />
+        {shortfallP > 0 ? (
+          <Stat label="Behind by end of month" wide value={fmtPShort(shortfallP)}
+                sub="what should be in and isn't, across every plan" tone="neg" />
+        ) : (
+          <Stat label="Everyone's up to date" wide value="✓" sub="no shortfall against any plan" tone="pos" />
+        )}
+      </div>
+
+      <div className="section-hdr">Expected this month</div>
+      {rows.length ? rows.map((r, i) => (
+        <div className="list-row tap" key={r.stat.bill.id + ':' + r.p.person.id + ':' + i}
+             onClick={() => setSheet({ stat: r.stat, personId: r.p.person.id })}>
+          <Avatar person={r.p.person} />
+          <div className="lr-main">
+            <div className="lr-title">
+              {r.p.person.name}
+              {r.shortP > 0 && !r.dueThisMonth
+                ? <span className="badge badge-late" style={{ marginLeft: 6 }}>carried over</span>
+                : r.ahead ? <span className="badge badge-done" style={{ marginLeft: 6 }}>covered</span> : null}
+            </div>
+            <div className="lr-sub">
+              {categoryEmoji(r.stat.bill.category)} {r.stat.bill.title}
+              {r.shortP > 0 ? ` · ${fmtP(r.shortP)} short` : ' · paid ahead'}
+            </div>
+          </div>
+          <div className="lr-amt">{fmtP(r.dueThisMonth)}</div>
+        </div>
+      )) : (
+        <Empty icon="🌤" title="Nothing scheduled">
+          No instalments fall due in {fmtMonth(key + '-01', true)}.
+        </Empty>
+      )}
+
+      {sheet ? (
+        <PaymentInSheet stat={sheet.stat} preset={{ personId: sheet.personId }}
+                        reload={reload} showToast={showToast} onClose={() => setSheet(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   CASHFLOW
+   How far I'm fronting the money, month by month, and when it
+   comes back.
+   ════════════════════════════════════════════════════════════ */
+
+function CashflowScreen({ ctx, billStats }) {
+  const nowKey = thisMonthKey();
+
+  const months = useMemo(() => {
+    const keys = new Set([nowKey]);
+    ctx.paymentsIn .forEach(p => keys.add(monthKey(p.paid_on)));
+    ctx.paymentsOut.forEach(p => keys.add(monthKey(p.paid_on)));
+    ctx.instalments.forEach(i => { if (!i.waived) keys.add(monthKey(i.due_date)); });
+
+    const sorted = [...keys].filter(Boolean).sort();
+    if (!sorted.length) return [];
+
+    // Fill the gaps so a quiet month still shows as a quiet month rather
+    // than vanishing from the run of the year.
+    const out = [];
+    for (let mi = monthIndex(sorted[0] + '-01'); mi <= monthIndex(sorted[sorted.length - 1] + '-01'); mi++) {
+      out.push(fromMonthIndex(mi, 1).slice(0, 7));
+    }
+    return out;
+  }, [ctx, nowKey]);
+
+  const archived = new Set(ctx.bills.filter(b => b.status === 'archived').map(b => b.id));
+
+  const series = months.map(k => {
+    const future = k > nowKey;
+
+    const actualIn   = ctx.paymentsIn .filter(p => monthKey(p.paid_on) === k)
+                                      .reduce((a, p) => a + toPence(p.amount), 0);
+    const actualOut  = ctx.paymentsOut.filter(p => !p.scheduled && monthKey(p.paid_on) === k)
+                                      .reduce((a, p) => a + toPence(p.amount), 0);
+    const plannedIn  = ctx.instalments.filter(i => !i.waived && !archived.has(i.bill_id) && monthKey(i.due_date) === k)
+                                      .reduce((a, i) => a + toPence(i.amount), 0);
+    const plannedOut = ctx.paymentsOut.filter(p => p.scheduled && monthKey(p.paid_on) === k)
+                                      .reduce((a, p) => a + toPence(p.amount), 0);
+
+    // Past and present are reported on what actually happened; the future
+    // is the plan. Mixing the two would double-count the month a payment
+    // was both expected and received.
+    const inP  = future ? plannedIn  : actualIn;
+    const outP = future ? plannedOut : actualOut;
+
+    return { k, future, inP, outP, netP: inP - outP, actualIn, actualOut, plannedIn, plannedOut };
+  });
+
+  let running = 0;
+  series.forEach(s => { running += s.netP; s.cumP = running; });
+
+  const max = Math.max(1, ...series.map(s => Math.max(s.inP, s.outP)));
+
+  const todayIdx  = series.findIndex(s => s.k === nowKey);
+  const positionP = todayIdx >= 0 ? series[todayIdx].cumP : running;
+  const lowest    = series.reduce((lo, s) => (s.cumP < lo.cumP ? s : lo), series[0] || { cumP: 0, k: nowKey });
+
+  // Recovery is the month after the LAST time the running position is
+  // negative — not the first time it pokes above zero. A big balance
+  // falling due later in the year drags it back under, and reporting the
+  // earlier crossing would promise a recovery that never happens.
+  const lastNegIdx  = series.reduce((acc, s, i) => (s.cumP < 0 ? i : acc), -1);
+  const neverNeg    = lastNegIdx === -1;
+  const recovers    = neverNeg ? null : (series[lastNegIdx + 1] || null);
+
+  if (!series.length) {
+    return (
+      <div className="scroll-pad">
+        <header className="header"><div className="header-title">Cashflow</div></header>
+        <Empty icon="📈" title="Nothing to plot yet">
+          Record a bill and some payments and the month-by-month position appears here.
+        </Empty>
+      </div>
+    );
+  }
+
+  return (
+    <div className="scroll-pad">
+      <header className="header"><div className="header-title">Cashflow</div></header>
+
+      <div className="stat-grid">
+        <Stat label="Position today" value={fmtSigned(positionP)}
+              sub={positionP < 0 ? 'I am fronting this much' : 'ahead overall'}
+              tone={positionP < 0 ? 'neg' : 'pos'} />
+        <Stat label="Deepest point" value={fmtPShort(Math.min(0, lowest.cumP))}
+              sub={fmtMonth(lowest.k + '-01')} tone="mut" />
+        <Stat label="Back to even" wide
+              value={neverNeg ? 'Never behind'
+                    : recovers ? fmtMonth(recovers.k + '-01', true)
+                    : 'Not on the current plans'}
+              sub={neverNeg ? 'the position never goes negative'
+                  : recovers ? 'and stays there, after every committed outgoing'
+                  : 'the schedules as they stand never bring the position back to zero'}
+              tone={neverNeg || recovers ? 'pos' : 'neg'} />
+      </div>
+
+      <div className="section-hdr">
+        <span>Month by month</span>
+        <span style={{ textTransform: 'none', letterSpacing: 0 }}>in / out / running</span>
+      </div>
+
+      {series.map(s => (
+        <div className="list-row" key={s.k} style={s.future ? { opacity: .72 } : null}>
+          <div style={{ width: 58, flexShrink: 0 }}>
+            <div className="lr-title" style={{ fontSize: 13 }}>{fmtMonth(s.k + '-01')}</div>
+            {s.k === nowKey ? <div className="lr-sub" style={{ color: 'var(--primary)', fontWeight: 700 }}>now</div>
+                            : s.future ? <div className="lr-sub">planned</div> : null}
+          </div>
+          <div className="lr-main">
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+              <span className="lr-sub v-pos" style={{ width: 62, fontVariantNumeric: 'tabular-nums' }}>
+                {s.inP ? fmtPShort(s.inP) : '—'}
+              </span>
+              <div style={{ flex: 1 }}><MiniBar value={s.inP} max={max} tone="in" /></div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span className="lr-sub v-neg" style={{ width: 62, fontVariantNumeric: 'tabular-nums' }}>
+                {s.outP ? '−' + fmtPShort(s.outP) : '—'}
+              </span>
+              <div style={{ flex: 1 }}><MiniBar value={s.outP} max={max} tone="out" /></div>
+            </div>
+          </div>
+          <div style={{ textAlign: 'right', minWidth: 72 }}>
+            <div className={'lr-amt ' + (s.cumP < 0 ? 'v-neg' : 'v-pos')}>{fmtPShort(s.cumP)}</div>
+            <div className="lr-sub">running</div>
+          </div>
+        </div>
+      ))}
+
+      <div className="notice notice-info">
+        Months up to now show what actually moved. Future months show what the
+        plans expect in, and any outgoings marked as committed but not yet paid.
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   PEOPLE
+   ════════════════════════════════════════════════════════════ */
+
+const EMOJI_CHOICES = ['', '👩', '👨', '🧑', '👧', '👦', '🧓', '🐝', '⭐️', '🌷', '⚽️', '🎸', '📚', '🐶'];
+
+function PeopleScreen({ ctx, billStats, reload, showToast, user, onSignOut, isDark, toggleDark, setOverlay }) {
+  const [editing,  setEditing]  = useState(null);   // person, or 'new'
+  const [expanded, setExpanded] = useState(null);
+
+  // Roll every bill up per person so the list answers "what does Molly owe
+  // me in total", not just per bill.
+  const summary = useMemo(() => {
+    const acc = {};
+    ctx.people.forEach(p => {
+      acc[p.id] = { person: p, owedP: 0, paidP: 0, arrearsP: 0, bills: [] };
+    });
+    billStats.filter(s => s.bill.status !== 'archived').forEach(s => {
+      s.people.forEach(p => {
+        const a = acc[p.person.id];
+        if (!a) return;
+        if (!p.isMe) { a.owedP += p.owedP; a.paidP += p.paidP; a.arrearsP += p.arrearsP; }
+        a.bills.push({ stat: s, p });
+      });
+    });
+    return Object.values(acc).sort((a, b) =>
+      (a.person.archived - b.person.archived) ||
+      (b.owedP - b.paidP) - (a.owedP - a.paidP) ||
+      a.person.name.localeCompare(b.person.name)
+    );
+  }, [ctx.people, billStats]);
+
+  const totalOutP = summary.reduce((a, s) => a + Math.max(0, s.owedP - s.paidP), 0);
+
+  return (
+    <div className="scroll-pad">
+      <header className="header">
+        <div className="header-title">People</div>
+        <button className="btn btn-icon btn-ghost" onClick={toggleDark}>{isDark ? '☀️' : '🌙'}</button>
+        <button className="btn btn-primary btn-sm" onClick={() => setEditing('new')}>+ Add</button>
+      </header>
+
+      {summary.length ? (
+        <div className="stat-grid">
+          <Stat label="Owed to me" wide value={fmtPShort(totalOutP)}
+                sub="across every active and settled bill" />
+        </div>
+      ) : null}
+
+      {!summary.length ? (
+        <Empty icon="👥" title="No people yet">
+          Add the people you split bills with. They don't need accounts —
+          this is your ledger, not theirs.
+        </Empty>
+      ) : null}
+
+      {summary.map(s => {
+        const outP = Math.max(0, s.owedP - s.paidP);
+        const pct  = s.owedP > 0 ? Math.min(100, Math.round((s.paidP / s.owedP) * 100)) : 100;
+        const open = expanded === s.person.id;
+        return (
+          <div key={s.person.id}>
+            <div className="list-row tap" style={s.person.archived ? { opacity: .5 } : null}
+                 onClick={() => setExpanded(open ? null : s.person.id)}>
+              <Avatar person={s.person} />
+              <div className="lr-main">
+                <div className="lr-title">
+                  {s.person.name}
+                  {s.person.is_me ? <span className="badge badge-wip" style={{ marginLeft: 6 }}>me</span> : null}
+                  {s.person.archived ? <span className="badge badge-new" style={{ marginLeft: 6 }}>archived</span> : null}
+                  {s.arrearsP > 0 ? <span className="badge badge-late" style={{ marginLeft: 6 }}>
+                    {fmtP(s.arrearsP)} overdue</span> : null}
+                </div>
+                <div className="lr-sub" style={{ marginBottom: s.person.is_me ? 0 : 5 }}>
+                  {s.person.is_me
+                    ? 'That\'s you — your own shares are never counted as owed'
+                    : s.owedP > 0
+                      ? `${fmtP(s.paidP)} of ${fmtP(s.owedP)} paid across ${s.bills.length} bill${s.bills.length === 1 ? '' : 's'}`
+                      : 'Not on any bill yet'}
+                </div>
+                {!s.person.is_me && s.owedP > 0
+                  ? <Progress pct={pct} tone={s.arrearsP > 0 ? 'late' : pct >= 100 ? 'done' : ''} />
+                  : null}
+              </div>
+              <div style={{ textAlign: 'right', minWidth: 70 }}>
+                {!s.person.is_me ? <div className="lr-amt">{fmtP(outP)}</div> : null}
+                <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }}
+                        onClick={e => { e.stopPropagation(); setEditing(s.person); }}>Edit</button>
+              </div>
+            </div>
+
+            {open && s.bills.length ? s.bills.map(({ stat, p }) => (
+              <div className="list-row tap" key={stat.bill.id}
+                   style={{ paddingLeft: 58, background: 'var(--bg)' }}
+                   onClick={() => setOverlay({ name: 'bill', id: stat.bill.id })}>
+                <div className="lr-main">
+                  <div className="lr-title" style={{ fontSize: 13 }}>
+                    {categoryEmoji(stat.bill.category)} {stat.bill.title}
+                  </div>
+                  <div className="lr-sub">
+                    {p.isMe ? 'my share' : `${fmtP(p.paidP)} of ${fmtP(p.owedP)}`}
+                    {p.nextDue && !p.isMe && p.outstandingP > 0 ? ` · next ${relativeDue(p.nextDue.due_date)}` : ''}
+                  </div>
+                </div>
+                <div className="lr-amt" style={{ fontSize: 14 }}>
+                  {fmtP(p.isMe ? p.owedP : p.outstandingP)}
+                </div>
+              </div>
+            )) : null}
+          </div>
+        );
+      })}
+
+      <div className="section-hdr">Account</div>
+      <div className="list-row">
+        <div className="lr-main">
+          <div className="lr-title">Signed in</div>
+          <div className="lr-sub">{user.email}</div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onSignOut}>Sign out</button>
+      </div>
+      <div className="list-row">
+        <div className="lr-main">
+          <div className="lr-title">Sainsbury's bill splitter</div>
+          <div className="lr-sub">The grocery receipt app — separate data, still there</div>
+        </div>
+        <a className="btn btn-ghost btn-sm" href="/">Open</a>
+      </div>
+
+      {editing ? (
+        <PersonSheet person={editing === 'new' ? null : editing}
+                     ctx={ctx} reload={reload} showToast={showToast}
+                     onClose={() => setEditing(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+function PersonSheet({ person, ctx, reload, showToast, onClose }) {
+  const [name,   setName]   = useState(person?.name || '');
+  const [emoji,  setEmoji]  = useState(person?.emoji || '');
+  const [colour, setColour] = useState(person?.colour_idx ?? (ctx.people.length % PALETTE.length));
+  const [isMe,   setIsMe]   = useState(!!person?.is_me);
+  const [busy,   setBusy]   = useState(false);
+
+  const otherMe = ctx.people.find(p => p.is_me && p.id !== person?.id);
+  const inUse   = person ? ctx.shares.some(s => s.person_id === person.id) : false;
+
+  async function save() {
+    if (!name.trim()) { showToast('Give them a name'); return; }
+    setBusy(true);
+    try {
+      const sb = await initSb();
+      // Only one person can be flagged as the ledger owner — the unique
+      // index enforces it, so clear the old one before claiming the flag.
+      if (isMe && otherMe) {
+        const { error } = await sb.from(TABLES.people).update({ is_me: false }).eq('id', otherMe.id);
+        if (error) throw error;
+      }
+      const payload = { name: name.trim(), emoji: emoji || null, colour_idx: colour, is_me: isMe };
+      const { error } = person
+        ? await sb.from(TABLES.people).update(payload).eq('id', person.id)
+        : await sb.from(TABLES.people).insert(payload);
+      if (error) throw error;
+      await reload();
+      showToast(person ? 'Saved' : `${name.trim()} added`);
+      onClose();
+    } catch (e) {
+      showToast(e.message || String(e));
+    } finally { setBusy(false); }
+  }
+
+  async function toggleArchive() {
+    setBusy(true);
+    const sb = await initSb();
+    const { error } = await sb.from(TABLES.people)
+      .update({ archived: !person.archived }).eq('id', person.id);
+    if (error) { showToast(error.message); setBusy(false); return; }
+    await reload();
+    showToast(person.archived ? 'Restored' : 'Archived');
+    onClose();
+  }
+
+  async function remove() {
+    setBusy(true);
+    const sb = await initSb();
+    const { error } = await sb.from(TABLES.people).delete().eq('id', person.id);
+    if (error) { showToast(error.message); setBusy(false); return; }
+    await reload();
+    showToast('Deleted');
+    onClose();
+  }
+
+  return (
+    <Sheet title={person ? 'Edit person' : 'Add a person'} onClose={onClose}
+           sub={person ? null : 'Someone you split bills with. They never sign in.'}>
+      <Field label="Name">
+        <input className="input" autoFocus value={name} onChange={e => setName(e.target.value)} />
+      </Field>
+
+      <Field label="Emoji (optional)">
+        <div className="chip-row">
+          {EMOJI_CHOICES.map(e => (
+            <span key={e || 'none'} className={'chip ' + (emoji === e ? '' : 'chip-off')}
+                  style={emoji === e ? { background: 'var(--primary-light)', borderColor: 'var(--primary)' } : null}
+                  onClick={() => setEmoji(e)}>
+              {e || 'Initials'}
+            </span>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Colour">
+        <div className="chip-row">
+          {PALETTE.map((c, i) => (
+            <span key={i} onClick={() => setColour(i)}
+                  style={{
+                    width: 30, height: 30, borderRadius: '50%', cursor: 'pointer',
+                    background: c.bg, border: '2.5px solid ' + (colour === i ? c.bd : 'transparent'),
+                    boxShadow: colour === i ? '0 0 0 2px var(--surface) inset' : 'none',
+                  }} />
+          ))}
+        </div>
+      </Field>
+
+      <label className="list-row" style={{ padding: '10px 0', cursor: 'pointer', borderBottom: 'none' }}>
+        <input type="checkbox" checked={isMe} onChange={e => setIsMe(e.target.checked)}
+               style={{ width: 18, height: 18 }} />
+        <div className="lr-main">
+          <div className="lr-title">This is me</div>
+          <div className="lr-sub">
+            My own share of a bill still counts toward splitting it, but is never
+            money I'm owed and never appears on a repayment schedule.
+            {otherMe ? ` Currently ${otherMe.name}.` : ''}
+          </div>
+        </div>
+      </label>
+
+      <button className="btn btn-primary btn-full" onClick={save} disabled={busy}>
+        {busy ? <span className="spin" /> : 'Save'}
+      </button>
+
+      {person ? (
+        <>
+          <button className="btn btn-ghost btn-full" style={{ marginTop: 8 }}
+                  onClick={toggleArchive} disabled={busy}>
+            {person.archived ? 'Restore' : 'Archive'}
+          </button>
+          {!inUse ? (
+            <button className="btn btn-ghost btn-full" style={{ marginTop: 8, color: 'var(--danger)' }}
+                    onClick={remove} disabled={busy}>
+              Delete
+            </button>
+          ) : (
+            <div className="hint" style={{ marginTop: 10 }}>
+              Can't be deleted while they're on a bill — archive them instead, which
+              hides them from new bills but keeps their history intact.
+            </div>
+          )}
+        </>
+      ) : null}
+    </Sheet>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════ */
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

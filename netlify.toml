@@ -10,6 +10,13 @@
   to = "/.netlify/functions/:splat"
   status = 200
 
+# Payment Plans lives alongside the Sainsbury's splitter as a second app.
+# The splitter keeps "/" untouched; this is just a tidy URL for plans.html.
+[[redirects]]
+  from = "/plans"
+  to = "/plans.html"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]
