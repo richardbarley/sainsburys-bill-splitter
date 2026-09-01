@@ -739,7 +739,16 @@ async function initSb() {
   const cfg = await r.json();
   if (!cfg.supabaseUrl) throw new Error(cfg.error || 'Missing supabaseUrl in config response');
   _sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-    auth: { persistSession: true, autoRefreshToken: true, storageKey: 'pp-auth' },
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      storageKey: 'pp-auth',
+      // Supabase's default magic-link email sends a LINK, not a code. If the
+      // email template hasn't been given {{ .Token }}, clicking that link
+      // lands back here with the session in the URL fragment — this picks it
+      // up and scrubs the fragment, so either half of the email works.
+      detectSessionInUrl: true,
+    },
   });
   return _sb;
 }
@@ -868,48 +877,165 @@ function MiniBar({ value, max, tone }) {
    ════════════════════════════════════════════════════════════ */
 
 function LoginScreen({ onSignedIn }) {
-  const [email, setEmail]   = useState('');
-  const [pw, setPw]         = useState('');
-  const [busy, setBusy]     = useState(false);
-  const [error, setError]   = useState('');
+  // Passwordless is the default route: one user, so a password is pure
+  // friction and one more thing to lose. Password sign-in stays available
+  // as a fallback for when email is slow or unavailable.
+  const [mode,  setMode]  = useState('code');     // 'code' | 'password'
+  const [step,  setStep]  = useState('email');    // 'email' | 'token'
+  const [email, setEmail] = useState(() => localStorage.getItem('pp.lastEmail') || '');
+  const [token, setToken] = useState('');
+  const [pw,    setPw]    = useState('');
+  const [busy,  setBusy]  = useState(false);
+  const [error, setError] = useState('');
+  const [note,  setNote]  = useState('');
 
-  async function submit(e) {
+  async function sendCode(e) {
+    if (e) e.preventDefault();
+    const addr = email.trim().toLowerCase();
+    if (!addr) return;
+    setBusy(true); setError(''); setNote('');
+    try {
+      const sb = await initSb();
+      // shouldCreateUser:false — a stranger typing their address must not
+      // silently mint an account, even though RLS would give it nothing.
+      const { error } = await sb.auth.signInWithOtp({
+        email: addr,
+        options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + '/plans' },
+      });
+      if (error) throw error;
+      localStorage.setItem('pp.lastEmail', addr);
+      setStep('token');
+      setNote('Check your email. Enter the code, or just click the link in the message.');
+    } catch (err) {
+      const m = String(err.message || err);
+      setError(
+        /signups not allowed|not found|invalid/i.test(m)
+          ? "There's no account for that address."
+          : /rate|too many|seconds/i.test(m)
+            ? 'Too many requests just now — wait a minute and try again.'
+            : m
+      );
+    } finally { setBusy(false); }
+  }
+
+  async function verifyCode(e) {
+    e.preventDefault();
+    const code = token.replace(/\D/g, '');
+    if (!code) return;
+    setBusy(true); setError('');
+    try {
+      const sb = await initSb();
+      const { data, error } = await sb.auth.verifyOtp({
+        email: email.trim().toLowerCase(), token: code, type: 'email',
+      });
+      if (error) throw error;
+      onSignedIn(data.user);
+    } catch (err) {
+      const m = String(err.message || err);
+      // Supabase returns one message — "Token has expired or is invalid" —
+      // for both a mistyped code and a stale one, so don't guess which.
+      // Claiming "expired" at someone who simply fat-fingered a digit sends
+      // them off to request a new code they don't need.
+      setError(/expired|invalid|token/i.test(m)
+        ? "That code didn't work. It may be mistyped, or it may have expired — send a new one to be sure."
+        : m);
+    } finally { setBusy(false); }
+  }
+
+  async function signInWithPassword(e) {
     e.preventDefault();
     setBusy(true); setError('');
     try {
       const sb = await initSb();
-      const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw });
+      const { data, error } = await sb.auth.signInWithPassword({
+        email: email.trim().toLowerCase(), password: pw,
+      });
       if (error) throw error;
+      localStorage.setItem('pp.lastEmail', email.trim().toLowerCase());
       onSignedIn(data.user);
     } catch (err) {
       setError(err.message || 'Could not sign in');
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
-  return (
+  const wrap = (children) => (
     <div className="login-wrap">
       <div style={{ fontSize: 46, marginBottom: 10 }}>📊</div>
       <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Payment Plans</div>
       <div style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 26, textAlign: 'center' }}>
         Split a big bill and track what comes back
       </div>
-      <form onSubmit={submit} style={{ width: '100%', maxWidth: 320 }}>
+      <div style={{ width: '100%', maxWidth: 320 }}>
+        {children}
+        {error ? <div className="notice notice-danger" style={{ margin: '14px 0 0' }}>{error}</div> : null}
+        {note && !error ? <div className="notice notice-info" style={{ margin: '14px 0 0' }}>{note}</div> : null}
+      </div>
+    </div>
+  );
+
+  // ── Enter the emailed code ───────────────────────────────
+  if (mode === 'code' && step === 'token') {
+    return wrap(
+      <form onSubmit={verifyCode}>
+        <Field label="Code" hint={`Sent to ${email.trim().toLowerCase()}`}>
+          <input className="input input-money" autoFocus inputMode="numeric"
+                 autoComplete="one-time-code" placeholder="123456" maxLength={10}
+                 style={{ fontSize: 22, letterSpacing: '.22em', textAlign: 'center' }}
+                 value={token} onChange={ev => setToken(ev.target.value)} />
+        </Field>
+        <button className="btn btn-primary btn-full" disabled={busy || !token.trim()}>
+          {busy ? <span className="spin" /> : 'Sign in'}
+        </button>
+        <button type="button" className="btn btn-ghost btn-full" style={{ marginTop: 8 }}
+                onClick={sendCode} disabled={busy}>
+          Send another code
+        </button>
+        <button type="button" className="btn btn-ghost btn-full" style={{ marginTop: 8, border: 'none' }}
+                onClick={() => { setStep('email'); setToken(''); setError(''); setNote(''); }}>
+          Use a different email
+        </button>
+      </form>
+    );
+  }
+
+  // ── Password fallback ────────────────────────────────────
+  if (mode === 'password') {
+    return wrap(
+      <form onSubmit={signInWithPassword}>
         <Field label="Email">
           <input className="input" type="email" autoComplete="username"
-                 value={email} onChange={e => setEmail(e.target.value)} required />
+                 value={email} onChange={ev => setEmail(ev.target.value)} required />
         </Field>
         <Field label="Password">
           <input className="input" type="password" autoComplete="current-password"
-                 value={pw} onChange={e => setPw(e.target.value)} required />
+                 value={pw} onChange={ev => setPw(ev.target.value)} required />
         </Field>
-        {error ? <div className="notice notice-danger" style={{ margin: '0 0 14px' }}>{error}</div> : null}
         <button className="btn btn-primary btn-full" disabled={busy}>
           {busy ? <span className="spin" /> : 'Sign in'}
         </button>
+        <button type="button" className="btn btn-ghost btn-full" style={{ marginTop: 8, border: 'none' }}
+                onClick={() => { setMode('code'); setError(''); }}>
+          Email me a code instead
+        </button>
       </form>
-    </div>
+    );
+  }
+
+  // ── Ask for the email address ────────────────────────────
+  return wrap(
+    <form onSubmit={sendCode}>
+      <Field label="Email" hint="We'll email you a code — no password needed.">
+        <input className="input" type="email" autoFocus autoComplete="username"
+               value={email} onChange={ev => setEmail(ev.target.value)} required />
+      </Field>
+      <button className="btn btn-primary btn-full" disabled={busy || !email.trim()}>
+        {busy ? <span className="spin" /> : 'Email me a code'}
+      </button>
+      <button type="button" className="btn btn-ghost btn-full" style={{ marginTop: 8, border: 'none' }}
+              onClick={() => { setMode('password'); setError(''); setNote(''); }}>
+        Use a password instead
+      </button>
+    </form>
   );
 }
 

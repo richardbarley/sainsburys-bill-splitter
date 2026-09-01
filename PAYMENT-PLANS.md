@@ -36,6 +36,36 @@ Consequences worth knowing:
   email, so the browser talks to Supabase directly. The only Netlify function
   is `plans-config.js`, which hands out the project URL and publishable key
   from `PLANS_SUPABASE_URL` / `PLANS_SUPABASE_ANON_KEY`.
+### Signing in
+
+Passwordless by default: type your email, Supabase sends a message, you enter
+the six-digit code. There is one user, so a password was only ever friction
+and one more thing to lose. Password sign-in is still there as a fallback
+behind "Use a password instead".
+
+`signInWithOtp` is called with `shouldCreateUser: false` — a stranger typing
+their address must not silently mint an account, even though RLS would give
+it nothing.
+
+Two bits of Supabase config this depends on:
+
+- **Authentication → Emails → Magic Link** must include `{{ .Token }}` in the
+  template, or the email contains only a link and there is no code to type.
+- **Authentication → URL Configuration → Redirect URLs** must list
+  `https://barleybils.netlify.app/plans` for the link half to work.
+
+The page sets `detectSessionInUrl`, so if the template hasn't been changed and
+the email carries only a link, clicking it still signs you in — the session
+arrives in the URL fragment and is picked up and scrubbed. Either half of the
+email works.
+
+Supabase returns one error message, `Token has expired or is invalid`, for
+both a mistyped code and a stale one. The UI doesn't guess between them:
+telling someone their code "expired" when they simply fat-fingered a digit
+sends them off to request a replacement they don't need.
+
+### Access
+
 - Access is granted by adding an address to `pp_members`. A signed-in
   non-member gets an explicit "no access" screen rather than a
   confusingly-empty app.

@@ -58,7 +58,8 @@ generate a monthly repayment schedule, then record what comes in and what you
 pay out. Screens for this month's position, per-person balances across every
 bill, and month-by-month cashflow.
 
-Data lives in the `pp_` tables of the "Home" Supabase project
+Sign-in is passwordless — Supabase emails a six-digit code — with password
+sign-in kept as a fallback. Data lives in the `pp_` tables of the "Home" Supabase project
 ([payment-plans-schema.sql](payment-plans-schema.sql)), protected by RLS so
 the browser talks to Supabase directly. The only server-side piece is the
 `plans-config` function.
