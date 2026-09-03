@@ -151,6 +151,11 @@
     .field { margin-bottom: 16px; }
     .field-row { display: flex; gap: 10px; }
     .field-row > * { flex: 1; min-width: 0; }
+    /* Safari gives date, month and select controls a minimum intrinsic width
+       and will overflow its column rather than shrink below it, which sits
+       one field on top of the next. The wrapper alone isn't enough — the
+       control itself has to be allowed to shrink. */
+    .field-row .input { min-width: 0; max-width: 100%; }
     .hint { font-size: 12px; color: var(--muted); margin-top: 5px; line-height: 1.4; }
 
     /* Numeric money input — tabular figures so columns line up */
@@ -530,6 +535,13 @@ function fmtDate(iso) {
   const [y, m, d] = String(iso).split('-').map(Number);
   if (!y) return '—';
   return `${d} ${MONTH_ABBR[(m - 1) % 12]} ${y}`;
+}
+
+function ordinal(n) {
+  const v = Math.abs(Number(n) || 0);
+  // 11th, 12th and 13th are the exceptions the naive n % 10 rule gets wrong.
+  if (v % 100 >= 11 && v % 100 <= 13) return v + 'th';
+  return v + (['th', 'st', 'nd', 'rd'][v % 10] || 'th');
 }
 
 function fmtMonth(iso, long) {
@@ -2110,24 +2122,35 @@ function BillFormScreen({ ctx, reload, showToast, billId, onBack, setOverlay }) 
 
         {makePlan ? (
           <>
+            {/* The month picker gets a row to itself. Safari won't shrink one
+                below its intrinsic width, so three fields across could never
+                fit it — it overflowed onto the field beside it instead. */}
+            <Field label="First payment">
+              <input className="input" type="month" value={start}
+                     onChange={e => setStart(e.target.value)} />
+            </Field>
+
             <div className="field-row">
-              <Field label="Over">
+              <Field label="Number of months">
                 <input className="input" inputMode="numeric" value={months}
                        onChange={e => setMonths(e.target.value)} />
               </Field>
-              <Field label="Starting">
-                <input className="input" type="month" value={start}
-                       onChange={e => setStart(e.target.value)} />
-              </Field>
-              <Field label="Due day">
-                <input className="input" inputMode="numeric" value={dueDay}
-                       onChange={e => setDueDay(e.target.value)} />
+              <Field label="Due on the">
+                {/* A list rather than a free number: it cannot take an invalid
+                    day, and stopping at the 28th explains itself. */}
+                <select className="input" value={dueDay}
+                        onChange={e => setDueDay(e.target.value)}>
+                  {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+                    <option key={d} value={d}>{ordinal(d)}</option>
+                  ))}
+                </select>
               </Field>
             </div>
+
             <div className="hint" style={{ marginTop: -8, marginBottom: 16 }}>
-              {monthsN} monthly instalment{monthsN === 1 ? '' : 's'} from {fmtMonth(start + '-01', true)},
-              due on the {dueDay || 1}{['st','nd','rd'][(parseInt(dueDay,10)||1) % 10 - 1] && (parseInt(dueDay,10)||1) < 11 ? ['st','nd','rd'][(parseInt(dueDay,10)||1) % 10 - 1] : 'th'} of each month.
-              Capped at the 28th so no month is ever skipped.
+              {monthsN} monthly instalment{monthsN === 1 ? '' : 's'}, the {ordinal(dueDay || 1)} of
+              each month from {fmtMonth(start + '-01', true)}. Only up to the 28th, so no
+              month is ever skipped.
               {preview.allocated > 0 ? ` Roughly ${fmtP(perMonthPreview)} a month coming in.` : ''}
             </div>
           </>
