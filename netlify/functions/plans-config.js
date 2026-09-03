@@ -11,9 +11,15 @@
 // gates on pp_is_member()/pp_is_owner(), which read the caller's verified
 // JWT email. Without a signed-in member the key grants nothing.
 //
+// Also hands out the VAPID public key for web push. That key is public by
+// definition — it is what the browser encrypts a subscription to, and it is
+// useless without the private half, which never leaves the server.
+//
 // Required Netlify environment variables:
 //   PLANS_SUPABASE_URL       — Home project URL
 //   PLANS_SUPABASE_ANON_KEY  — Home project publishable (anon) key
+//   PLANS_VAPID_PUBLIC       — VAPID public key (optional; push is simply
+//                              unavailable in the UI when it is absent)
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -38,5 +44,13 @@ exports.handler = async (event) => {
     };
   }
 
-  return { statusCode: 200, headers: CORS, body: JSON.stringify({ supabaseUrl, supabaseAnonKey }) };
+  return {
+    statusCode: 200,
+    headers: CORS,
+    body: JSON.stringify({
+      supabaseUrl,
+      supabaseAnonKey,
+      vapidPublicKey: process.env.PLANS_VAPID_PUBLIC || null,
+    }),
+  };
 };

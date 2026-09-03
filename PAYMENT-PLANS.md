@@ -170,3 +170,70 @@ expected and received. "Back to even" is the month after the *last* time the
 running position is negative, not the first time it pokes above zero: a
 holiday balance falling due later in the year drags it back under, and
 reporting the earlier crossing would promise a recovery that never happens.
+
+## Home Screen and notifications
+
+These are one feature, not two. **iOS only allows web push for apps added to
+the Home Screen** — a page in a Safari tab cannot subscribe at all, no matter
+what it asks for. So the notification settings check whether the app is
+running installed and, on iPhone or iPad, lead with the install steps instead
+of showing a button that could never work.
+
+- `plans.webmanifest` makes it installable, scoped to `/plans`.
+- `plans-sw.js` is the service worker. It is registered with an explicit
+  `{ scope: '/plans' }`: the script sits at the site root, so its *default*
+  scope would be `/`, which would put the Sainsbury's splitter under its
+  control. A scope narrower than the script's own directory is always
+  permitted, and that is what keeps the two apps apart. Never widen it.
+- Chrome and Edge fire `beforeinstallprompt` and get a real Install button.
+  Safari fires nothing and has no API, so there it shows the Share-menu
+  steps rather than a dead button.
+
+### What gets sent
+
+One notification a day, and only when there is something to say — nothing
+due means nothing sent. It covers instalments falling due today, anyone who
+has fallen behind what their plan expected, and your own committed outgoings
+coming due. Each category can be turned off, and the send hour is a setting.
+
+Something falling due *today* is never reported as overdue. Arrears are
+computed as of yesterday, so the morning a payment lands is not the morning
+you are told it is late.
+
+### Scheduling
+
+`plans-reminders` runs **hourly**, not daily. Netlify's scheduler is UTC
+only, so a fixed daily cron would drift an hour against UK wall-clock time
+twice a year. The function compares the current `Europe/London` hour against
+each person's preferred send hour and dedupes by date, so exactly one
+reminder goes out per day at the same local time in both BST and GMT.
+
+The dedupe row is written *before* sending. The unique constraint is the
+lock: a retry, an overlapping run or a redeploy mid-flight all lose the race
+and send nothing. That is the right way round — a missed reminder is
+recoverable, a duplicate at 8am is just annoying. If the send itself throws,
+the claim is released so the next hourly run can retry.
+
+### Credentials
+
+| Variable | Needed by |
+|---|---|
+| `PLANS_VAPID_PUBLIC` | `plans-config` (served to the browser), both senders |
+| `PLANS_VAPID_PRIVATE` | both senders — never leaves the server |
+| `PLANS_VAPID_SUBJECT` | both senders (a `mailto:` for the push service) |
+| `PLANS_SUPABASE_SERVICE_KEY` | **`plans-reminders` only** |
+
+The scheduled job is the one place that genuinely needs the service key: it
+runs with no user session, so RLS has no JWT to gate on. Everything else —
+subscribing, unsubscribing, the test notification, and the on-demand
+"preview today's reminder" — goes through the caller's own token, so the app
+is fully usable and testable before that key is ever set. Without it the
+scheduled function logs that it is skipping and returns cleanly.
+
+### Dead devices
+
+A `404` or `410` from a push service is definitive: the browser has thrown
+the subscription away and it will never work again, so the row is deleted.
+Any other failure could be a transient outage at Apple or Google, so the row
+survives and only `fail_count` moves. Losing a device because a push service
+had a bad minute would be worse than keeping a stale row.

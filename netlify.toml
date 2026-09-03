@@ -5,6 +5,14 @@
 [functions]
   node_bundler = "esbuild"
 
+# Hourly, not daily. Netlify's scheduler is UTC only, so a fixed daily cron
+# would drift an hour against UK wall-clock time twice a year. The function
+# compares the current Europe/London hour against each person's preferred
+# send hour and dedupes by date, so exactly one reminder goes out per day at
+# the same local time in both BST and GMT.
+[functions."plans-reminders"]
+  schedule = "0 * * * *"
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
@@ -22,6 +30,20 @@
   [headers.values]
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
+
+# The service worker must never be served stale, or a deploy can't replace
+# the worker that's caching everything else.
+[[headers]]
+  for = "/plans-sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Service-Worker-Allowed = "/plans"
+
+[[headers]]
+  for = "/plans.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json; charset=utf-8"
+    Cache-Control = "public, max-age=3600"
 
 # Never cache the HTML — always fetch fresh so deploys show immediately
 [[headers]]

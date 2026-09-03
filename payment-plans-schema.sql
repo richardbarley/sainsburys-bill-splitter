@@ -6,8 +6,8 @@
 -- a free org and pauses after a period of inactivity.
 --
 -- Already applied via migrations pp_payment_plans_init,
--- pp_revoke_anon_execute, pp_people_is_me and pp_revoke_public_execute.
--- Kept here as the
+-- pp_revoke_anon_execute, pp_people_is_me, pp_revoke_public_execute and
+-- pp_push_and_reminders. Kept here as the
 -- readable record of the schema, and so it can be rebuilt from scratch.
 -- ============================================================
 
@@ -158,7 +158,55 @@ create table if not exists pp_payments_out (
 comment on column pp_payments_out.scheduled is
   'true = a future payment I have committed to but not yet made, so the cashflow view can look forward. false = money that has actually left.';
 
+-- ── Web push subscriptions ──────────────────────────────────
+-- One row per browser/device that has granted notification permission. The
+-- endpoint is the identity: re-subscribing the same device returns the same
+-- endpoint, so the client upserts on it rather than accumulating rows.
+create table if not exists pp_push_subscriptions (
+  id           uuid primary key default gen_random_uuid(),
+  endpoint     text not null unique,
+  p256dh       text not null,
+  auth         text not null,
+  email        text,
+  label        text,
+  user_agent   text,
+  created_at   timestamptz not null default now(),
+  last_used_at timestamptz,
+  last_error   text,
+  fail_count   integer not null default 0
+);
+comment on table pp_push_subscriptions is
+  'Devices that can receive push. On iOS a device can only appear here once the app has been added to the Home Screen — Safari tabs cannot subscribe.';
+comment on column pp_push_subscriptions.fail_count is
+  'Consecutive send failures. A 404/410 from the push service means the subscription is dead and the row is deleted outright; other errors increment this so a transient outage does not lose the device.';
+
+-- ── Reminder preferences ────────────────────────────────────
+create table if not exists pp_reminder_prefs (
+  email          text primary key,
+  daily_digest   boolean not null default true,
+  send_hour      integer not null default 8 check (send_hour between 0 and 23),
+  notify_due     boolean not null default true,
+  notify_overdue boolean not null default true,
+  notify_payouts boolean not null default true,
+  updated_at     timestamptz not null default now()
+);
+comment on column pp_reminder_prefs.send_hour is
+  'Hour of the day in Europe/London, not UTC. The scheduled job runs hourly and compares against UK local time, so the reminder stays at the same wall-clock hour across the BST/GMT switch.';
+
+-- ── What has already been sent ──────────────────────────────
+-- The unique key is the deduplication, not a log: the sender inserts before
+-- sending, so a retry or an overlapping run cannot notify twice.
+create table if not exists pp_reminders_sent (
+  id         uuid primary key default gen_random_uuid(),
+  dedupe_key text not null unique,
+  email      text,
+  title      text,
+  body       text,
+  sent_at    timestamptz not null default now()
+);
+
 -- ── Indexes ─────────────────────────────────────────────────
+create index if not exists pp_reminders_sent_at_idx on pp_reminders_sent (sent_at desc);
 create index if not exists pp_shares_bill_idx        on pp_shares (bill_id);
 create index if not exists pp_instalments_bill_idx   on pp_instalments (bill_id);
 create index if not exists pp_instalments_due_idx    on pp_instalments (due_date);
@@ -184,6 +232,9 @@ alter table pp_shares       enable row level security;
 alter table pp_instalments  enable row level security;
 alter table pp_payments_in  enable row level security;
 alter table pp_payments_out enable row level security;
+alter table pp_push_subscriptions enable row level security;
+alter table pp_reminder_prefs     enable row level security;
+alter table pp_reminders_sent     enable row level security;
 
 drop policy if exists pp_members_read on pp_members;
 create policy pp_members_read on pp_members for select using (pp_is_member());
@@ -191,7 +242,8 @@ create policy pp_members_read on pp_members for select using (pp_is_member());
 do $$
 declare t text;
 begin
-  foreach t in array array['pp_people','pp_bills','pp_shares','pp_instalments','pp_payments_in','pp_payments_out']
+  foreach t in array array['pp_people','pp_bills','pp_shares','pp_instalments','pp_payments_in','pp_payments_out',
+                           'pp_push_subscriptions','pp_reminder_prefs','pp_reminders_sent']
   loop
     execute format('drop policy if exists %I on %I', t || '_member_read', t);
     execute format('create policy %I on %I for select using (pp_is_member())', t || '_member_read', t);
@@ -204,3 +256,6 @@ end $$;
 insert into pp_members (email, label, role)
 values ('richardbarley@gmail.com', 'Richard', 'owner')
 on conflict (email) do update set role = 'owner';
+
+insert into pp_reminder_prefs (email) values ('richardbarley@gmail.com')
+on conflict (email) do nothing;

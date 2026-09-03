@@ -4,6 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Payment Plans</title>
+
+  <!-- Installable web app. On iOS this is not optional decoration: web push
+       only works once the app has been added to the Home Screen, so the
+       manifest is a prerequisite for notifications, not a nicety. -->
+  <link rel="manifest" href="/plans.webmanifest" />
+  <meta name="theme-color" content="#2563eb" />
+  <meta name="description" content="Split a big bill and track what comes back" />
+
+  <!-- iOS reads the apple-touch-icon rather than the manifest icons, and
+       applies its own squircle mask, so this one is a full-bleed square. -->
+  <link rel="apple-touch-icon" href="/plans-icon-180.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/plans-icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Plans" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <script>
     // Apply theme before first paint to avoid a flash of the wrong colour scheme.
     // React's useEffect runs after render, which is too late.
@@ -90,7 +105,9 @@
       position: sticky; top: 0; z-index: 100;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 14px 20px;
+      /* Extra top padding only when running as an installed app under a
+         notch; env() resolves to 0 in a normal browser tab. */
+      padding: calc(14px + env(safe-area-inset-top)) 20px 14px;
       display: flex; align-items: center; gap: 10px;
     }
     .header-title { flex: 1; font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
@@ -731,13 +748,19 @@ function computeBill(bill, ctx) {
    ════════════════════════════════════════════════════════════ */
 
 const API = '/.netlify/functions';
-let _sb = null;
+let _sb  = null;
+let _cfg = null;
+
+// The server config, once fetched. Holds the VAPID public key alongside the
+// Supabase details, so the push UI doesn't need a second round trip.
+function serverConfig() { return _cfg || {}; }
 
 async function initSb() {
   if (_sb) return _sb;
   const r   = await fetch(`${API}/plans-config`);
   const cfg = await r.json();
   if (!cfg.supabaseUrl) throw new Error(cfg.error || 'Missing supabaseUrl in config response');
+  _cfg = cfg;
   _sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
     auth: {
       persistSession: true,
@@ -760,6 +783,8 @@ const TABLES = {
   instalments: 'pp_instalments',
   paymentsIn:  'pp_payments_in',
   paymentsOut: 'pp_payments_out',
+  pushSubs:      'pp_push_subscriptions',
+  reminderPrefs: 'pp_reminder_prefs',
 };
 
 /**
@@ -771,13 +796,15 @@ const TABLES = {
  * per-screen queries, and makes every screen instant after first load.
  */
 async function loadAll(sb) {
-  const [people, bills, shares, instalments, paymentsIn, paymentsOut] = await Promise.all([
+  const [people, bills, shares, instalments, paymentsIn, paymentsOut, pushSubs, prefs] = await Promise.all([
     sb.from(TABLES.people).select('*').order('sort').order('name'),
     sb.from(TABLES.bills).select('*').order('purchase_date', { ascending: false, nullsFirst: false }),
     sb.from(TABLES.shares).select('*'),
     sb.from(TABLES.instalments).select('*'),
     sb.from(TABLES.paymentsIn).select('*'),
     sb.from(TABLES.paymentsOut).select('*'),
+    sb.from(TABLES.pushSubs).select('*').order('created_at'),
+    sb.from(TABLES.reminderPrefs).select('*'),
   ]);
 
   const firstErr = [people, bills, shares, instalments, paymentsIn, paymentsOut].find(r => r.error);
@@ -790,7 +817,144 @@ async function loadAll(sb) {
     instalments: instalments.data || [],
     paymentsIn:  paymentsIn.data  || [],
     paymentsOut: paymentsOut.data || [],
+    // Push tables are additive: an older deployment without them must still
+    // load the ledger, so their errors are tolerated rather than thrown.
+    pushSubscriptions: pushSubs.data || [],
+    reminderPrefs:     (prefs.data || [])[0] || null,
   };
+}
+
+/* ════════════════════════════════════════════════════════════
+   INSTALL + PUSH
+
+   The two are entangled on iOS: Safari will not let a page subscribe to
+   push at all until the app has been added to the Home Screen. So the
+   notification UI has to know whether it is running installed, and lead
+   with the install step when it isn't.
+   ════════════════════════════════════════════════════════════ */
+
+// Running as an installed app rather than in a browser tab. iOS reports this
+// through the non-standard navigator.standalone; everyone else via the
+// display-mode media query.
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches
+      || window.matchMedia('(display-mode: fullscreen)').matches
+      || window.navigator.standalone === true;
+}
+
+// iPadOS reports itself as a Mac, so touch points are the tell.
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function pushSupported() {
+  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+
+// A readable name for the device row, so a stale subscription can be
+// recognised months later.
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  if (/iPhone/.test(ua)) return 'iPhone';
+  if (/iPad/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return 'iPad';
+  if (/Android/.test(ua)) return 'Android';
+  if (/Macintosh/.test(ua)) return /Chrome/.test(ua) ? 'Mac (Chrome)' : 'Mac (Safari)';
+  if (/Windows/.test(ua)) return 'Windows';
+  return 'This device';
+}
+
+// VAPID keys travel as base64url; PushManager wants raw bytes.
+function urlBase64ToUint8Array(base64) {
+  const padded = (base64 + '='.repeat((4 - base64.length % 4) % 4))
+    .replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(padded);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+let _swReg = null;
+
+/**
+ * Register the worker under an explicit '/plans' scope.
+ *
+ * The script sits at the site root, so its default scope would be '/' — which
+ * would put the Sainsbury's splitter under this worker's control. A scope
+ * narrower than the script's directory is always allowed, and that is what
+ * keeps the two apps apart.
+ */
+async function registerServiceWorker() {
+  if (_swReg) return _swReg;
+  if (!('serviceWorker' in navigator)) return null;
+  try {
+    _swReg = await navigator.serviceWorker.register('/plans-sw.js', { scope: '/plans' });
+    return _swReg;
+  } catch (err) {
+    console.warn('Service worker registration failed:', err);
+    return null;
+  }
+}
+
+async function currentPushSubscription() {
+  if (!pushSupported()) return null;
+  const reg = await navigator.serviceWorker.getRegistration('/plans');
+  if (!reg) return null;
+  return reg.pushManager.getSubscription();
+}
+
+/**
+ * Ask for permission, subscribe, and record the device.
+ *
+ * Must be called from a user gesture — Safari rejects a permission request
+ * that isn't, and silently on some versions.
+ */
+async function enablePush(sb, vapidPublicKey, email) {
+  if (!pushSupported())  throw new Error('This browser cannot do notifications.');
+  if (!vapidPublicKey)   throw new Error('Push is not configured on the server yet.');
+
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    throw new Error(permission === 'denied'
+      ? 'Notifications are blocked for this app. You will need to allow them in your device settings.'
+      : 'Notification permission was dismissed.');
+  }
+
+  await registerServiceWorker();
+  const reg = await navigator.serviceWorker.ready;
+
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,   // required; Safari rejects a silent subscription
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+    });
+  }
+
+  const json = sub.toJSON();
+  // The endpoint is the device's identity — re-subscribing returns the same
+  // one, so upsert rather than accumulating a row per visit.
+  const { error } = await sb.from('pp_push_subscriptions').upsert({
+    endpoint: json.endpoint,
+    p256dh: json.keys.p256dh,
+    auth: json.keys.auth,
+    email,
+    label: deviceLabel(),
+    user_agent: navigator.userAgent.slice(0, 400),
+    last_error: null,
+    fail_count: 0,
+  }, { onConflict: 'endpoint' });
+  if (error) throw new Error(error.message);
+
+  return json.endpoint;
+}
+
+async function disablePush(sb) {
+  const sub = await currentPushSubscription();
+  if (!sub) return;
+  const endpoint = sub.endpoint;
+  await sub.unsubscribe().catch(() => {});
+  await sb.from('pp_push_subscriptions').delete().eq('endpoint', endpoint);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1040,6 +1204,290 @@ function LoginScreen({ onSignedIn }) {
 }
 
 /* ════════════════════════════════════════════════════════════
+   INSTALL PROMPT
+   ════════════════════════════════════════════════════════════ */
+
+// Chrome/Edge fire beforeinstallprompt and let us trigger the native sheet.
+// Safari fires nothing and has no API — the only route is the Share menu, so
+// there the honest thing is to show the steps rather than a dead button.
+let _deferredInstall = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _deferredInstall = e;
+});
+
+function InstallCard({ dismissible, onDismiss }) {
+  const [prompt, setPrompt] = useState(_deferredInstall);
+  const [done,   setDone]   = useState(false);
+
+  useEffect(() => {
+    const onPrompt = (e) => { e.preventDefault(); _deferredInstall = e; setPrompt(e); };
+    const onDone   = () => setDone(true);
+    window.addEventListener('beforeinstallprompt', onPrompt);
+    window.addEventListener('appinstalled', onDone);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt);
+      window.removeEventListener('appinstalled', onDone);
+    };
+  }, []);
+
+  if (isStandalone() || done) return null;
+
+  const ios = isIOS();
+
+  return (
+    <div className="card" style={{ borderColor: 'var(--primary)' }}>
+      <div className="bill-top" style={{ marginBottom: 8 }}>
+        <div className="bill-emoji">📲</div>
+        <div className="bill-name">
+          <div className="bn">Add to Home Screen</div>
+          <div className="bm">
+            Opens full screen like an app{pushSupported() ? ', and it\u2019s the only way to get notifications on iPhone' : ''}.
+          </div>
+        </div>
+        {dismissible ? (
+          <button className="btn btn-icon btn-ghost" onClick={onDismiss} aria-label="Dismiss">✕</button>
+        ) : null}
+      </div>
+
+      {ios || !prompt ? (
+        <ol style={{ margin: '10px 0 0 18px', fontSize: 13, lineHeight: 1.7, color: 'var(--muted)' }}>
+          <li>Tap the <strong>Share</strong> button {ios ? '(the square with an arrow)' : 'in your browser menu'}</li>
+          <li>Scroll to <strong>Add to Home Screen</strong></li>
+          <li>Tap <strong>Add</strong></li>
+        </ol>
+      ) : (
+        <button className="btn btn-primary btn-full" style={{ marginTop: 6 }}
+                onClick={async () => {
+                  prompt.prompt();
+                  const { outcome } = await prompt.userChoice;
+                  if (outcome === 'accepted') setDone(true);
+                  _deferredInstall = null; setPrompt(null);
+                }}>
+          Install
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   NOTIFICATION SETTINGS
+   ════════════════════════════════════════════════════════════ */
+
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
+
+function NotificationSettings({ ctx, reload, showToast, user, vapidPublicKey }) {
+  const [sub,     setSub]     = useState(undefined);   // undefined = still checking
+  const [busy,    setBusy]    = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [perm,    setPerm]    = useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
+  );
+
+  const prefs = ctx.reminderPrefs || {};
+  const devices = ctx.pushSubscriptions || [];
+
+  useEffect(() => { currentPushSubscription().then(s => setSub(s || null)).catch(() => setSub(null)); }, [devices.length]);
+
+  const supported  = pushSupported();
+  const standalone = isStandalone();
+  const ios        = isIOS();
+
+  // The one hard platform rule: iOS refuses to subscribe from a Safari tab.
+  const blockedByIOS = ios && !standalone;
+
+  async function toggle(on) {
+    setBusy(true);
+    try {
+      const sb = await initSb();
+      if (on) {
+        await enablePush(sb, vapidPublicKey, user.email);
+        setPerm('granted');
+        showToast('Notifications on for ' + deviceLabel());
+      } else {
+        await disablePush(sb);
+        showToast('Notifications off for this device');
+      }
+      await reload();
+      setSub(await currentPushSubscription());
+    } catch (err) {
+      showToast(err.message || String(err), 5000);
+    } finally { setBusy(false); }
+  }
+
+  async function send(kind) {
+    setTesting(true);
+    try {
+      const sb = await initSb();
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(`${API}/plans-push-send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(kind === 'digest' ? { digest: true } : { test: true }),
+      });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error || 'Send failed');
+      if (out.empty)        showToast(out.message, 5000);
+      else if (out.message) showToast(out.message, 4000);
+      else showToast(`Sent to ${out.sent} device${out.sent === 1 ? '' : 's'}` +
+                     (out.removed ? ` · ${out.removed} stale removed` : ''), 4000);
+      if (out.removed) await reload();
+    } catch (err) {
+      showToast(err.message || String(err), 5000);
+    } finally { setTesting(false); }
+  }
+
+  async function savePrefs(patch) {
+    const sb = await initSb();
+    const { error } = await sb.from('pp_reminder_prefs')
+      .upsert({ email: user.email, ...prefs, ...patch, updated_at: new Date().toISOString() },
+              { onConflict: 'email' });
+    if (error) { showToast(error.message); return; }
+    await reload();
+  }
+
+  async function removeDevice(row) {
+    const sb = await initSb();
+    const { error } = await sb.from('pp_push_subscriptions').delete().eq('id', row.id);
+    if (error) { showToast(error.message); return; }
+    // If it was this device, drop the local subscription too or the UI will
+    // claim it is still on.
+    const mine = await currentPushSubscription();
+    if (mine && mine.endpoint === row.endpoint) await mine.unsubscribe().catch(() => {});
+    await reload();
+    setSub(await currentPushSubscription());
+    showToast('Removed ' + (row.label || 'device'));
+  }
+
+  if (!supported) {
+    return (
+      <>
+        <div className="section-hdr">Notifications</div>
+        <div className="notice notice-warn">
+          This browser doesn't support web notifications.
+          {ios ? ' On iPhone, use Safari and add the app to your Home Screen.' : ''}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="section-hdr">Notifications</div>
+
+      {blockedByIOS ? (
+        <div className="notice notice-warn">
+          <strong>Add the app to your Home Screen first.</strong><br />
+          iPhone and iPad only allow notifications for apps opened from the Home
+          Screen — Safari tabs can't receive them at all. Once it's added, open
+          it from the Home Screen icon and turn notifications on there.
+        </div>
+      ) : !vapidPublicKey ? (
+        <div className="notice notice-warn">
+          Push isn't configured on the server — <code>PLANS_VAPID_PUBLIC</code> is unset.
+        </div>
+      ) : perm === 'denied' ? (
+        <div className="notice notice-danger">
+          Notifications are blocked for this app. Allow them in your browser or
+          device settings, then come back.
+        </div>
+      ) : (
+        <div className="list-row">
+          <div style={{ fontSize: 18, width: 30, textAlign: 'center' }}>{sub ? '🔔' : '🔕'}</div>
+          <div className="lr-main">
+            <div className="lr-title">{sub ? 'On for ' + deviceLabel() : 'Off on this device'}</div>
+            <div className="lr-sub">
+              {sub ? 'This device will get reminders.' : 'Turn on to get a daily reminder of what\u2019s due.'}
+            </div>
+          </div>
+          <button className={'btn btn-sm ' + (sub ? 'btn-ghost' : 'btn-primary')}
+                  disabled={busy || sub === undefined}
+                  onClick={() => toggle(!sub)}>
+            {busy ? <span className="spin" style={{ width: 13, height: 13 }} /> : (sub ? 'Turn off' : 'Turn on')}
+          </button>
+        </div>
+      )}
+
+      {devices.length ? (
+        <>
+          <div className="section-hdr" style={{ paddingTop: 10 }}>Devices</div>
+          {devices.map(d => (
+            <div className="list-row" key={d.id}>
+              <div style={{ fontSize: 18, width: 30, textAlign: 'center' }}>
+                {/iPhone|iPad|Android/.test(d.label || '') ? '📱' : '💻'}
+              </div>
+              <div className="lr-main">
+                <div className="lr-title">
+                  {d.label || 'Device'}
+                  {sub && sub.endpoint === d.endpoint
+                    ? <span className="badge badge-wip" style={{ marginLeft: 6 }}>this one</span> : null}
+                </div>
+                <div className="lr-sub">
+                  Added {fmtDate(String(d.created_at).slice(0, 10))}
+                  {d.last_used_at ? ` · last sent ${fmtDate(String(d.last_used_at).slice(0, 10))}` : ' · not used yet'}
+                  {d.fail_count > 0 ? ` · ${d.fail_count} failed` : ''}
+                </div>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => removeDevice(d)}>Remove</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 8, padding: '12px 20px 0' }}>
+            <button className="btn btn-ghost btn-sm" disabled={testing} onClick={() => send('test')}>
+              {testing ? <span className="spin" style={{ width: 13, height: 13 }} /> : 'Send a test'}
+            </button>
+            <button className="btn btn-ghost btn-sm" disabled={testing} onClick={() => send('digest')}>
+              Preview today's reminder
+            </button>
+          </div>
+        </>
+      ) : null}
+
+      <div className="section-hdr" style={{ paddingTop: 16 }}>Daily reminder</div>
+      <label className="list-row" style={{ cursor: 'pointer' }}>
+        <input type="checkbox" style={{ width: 18, height: 18 }}
+               checked={prefs.daily_digest !== false}
+               onChange={e => savePrefs({ daily_digest: e.target.checked })} />
+        <div className="lr-main">
+          <div className="lr-title">Send a daily reminder</div>
+          <div className="lr-sub">
+            One notification a day, and only when there's something to say —
+            nothing due means nothing sent.
+          </div>
+        </div>
+      </label>
+
+      <div className="list-row">
+        <div className="lr-main">
+          <div className="lr-title">Time</div>
+          <div className="lr-sub">UK time, year round — it doesn't drift in winter.</div>
+        </div>
+        <select className="input" style={{ width: 96 }}
+                value={prefs.send_hour ?? 8}
+                onChange={e => savePrefs({ send_hour: Number(e.target.value) })}>
+          {HOURS.map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
+        </select>
+      </div>
+
+      {[['notify_due', 'Payments due today', 'When an instalment falls due.'],
+        ['notify_overdue', 'Anyone behind', 'When someone has missed what the plan expected.'],
+        ['notify_payouts', 'My own payments out', 'When an outgoing I committed to falls due.']
+       ].map(([key, title, sub2]) => (
+        <label className="list-row" key={key} style={{ cursor: 'pointer' }}>
+          <input type="checkbox" style={{ width: 18, height: 18 }}
+                 checked={prefs[key] !== false}
+                 onChange={e => savePrefs({ [key]: e.target.checked })} />
+          <div className="lr-main">
+            <div className="lr-title">{title}</div>
+            <div className="lr-sub">{sub2}</div>
+          </div>
+        </label>
+      ))}
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
    ROOT APP
    ════════════════════════════════════════════════════════════ */
 
@@ -1083,6 +1531,12 @@ function App() {
   }, []);
 
   // ── Boot ───────────────────────────────────────────────────
+  useEffect(() => {
+    // Independent of sign-in: the worker should be in place whether or not
+    // there is a session, so an installed app opens instantly next time.
+    registerServiceWorker();
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
@@ -1178,7 +1632,8 @@ function App() {
   }
 
   const shared = { ctx, billStats, reload, showToast, setOverlay, isDark,
-                   toggleDark: () => setIsDark(d => !d) };
+                   toggleDark: () => setIsDark(d => !d),
+                   vapidPublicKey: serverConfig().vapidPublicKey || null };
 
   // ── Overlays take the whole screen ─────────────────────────
   let body = null;
@@ -1227,6 +1682,9 @@ function App() {
 
 function BillsScreen({ ctx, billStats, setOverlay, isDark, toggleDark }) {
   const [showArchived, setShowArchived] = useState(false);
+  const [hideInstall, setHideInstall] = useState(
+    () => localStorage.getItem('pp.hideInstall') === '1'
+  );
 
   const active   = billStats.filter(s => s.bill.status === 'active');
   const settled  = billStats.filter(s => s.bill.status === 'settled');
@@ -1276,6 +1734,11 @@ function BillsScreen({ ctx, billStats, setOverlay, isDark, toggleDark }) {
                   tone="mut" />
           ) : null}
         </div>
+      ) : null}
+
+      {!hideInstall ? (
+        <InstallCard dismissible
+                     onDismiss={() => { localStorage.setItem('pp.hideInstall', '1'); setHideInstall(true); }} />
       ) : null}
 
       {!billStats.length ? (
@@ -2617,7 +3080,7 @@ function CashflowScreen({ ctx, billStats }) {
 
 const EMOJI_CHOICES = ['', '👩', '👨', '🧑', '👧', '👦', '🧓', '🐝', '⭐️', '🌷', '⚽️', '🎸', '📚', '🐶'];
 
-function PeopleScreen({ ctx, billStats, reload, showToast, user, onSignOut, isDark, toggleDark, setOverlay }) {
+function PeopleScreen({ ctx, billStats, reload, showToast, user, onSignOut, isDark, toggleDark, setOverlay, vapidPublicKey }) {
   const [editing,  setEditing]  = useState(null);   // person, or 'new'
   const [expanded, setExpanded] = useState(null);
 
@@ -2723,6 +3186,18 @@ function PeopleScreen({ ctx, billStats, reload, showToast, user, onSignOut, isDa
           </div>
         );
       })}
+
+      {!isStandalone() ? (
+        <>
+          <div className="section-hdr">App</div>
+          <div style={{ padding: '0 0 4px' }}>
+            <InstallCard />
+          </div>
+        </>
+      ) : null}
+
+      <NotificationSettings ctx={ctx} reload={reload} showToast={showToast}
+                            user={user} vapidPublicKey={vapidPublicKey} />
 
       <div className="section-hdr">Account</div>
       <div className="list-row">

@@ -58,8 +58,10 @@ generate a monthly repayment schedule, then record what comes in and what you
 pay out. Screens for this month's position, per-person balances across every
 bill, and month-by-month cashflow.
 
-Sign-in is passwordless — Supabase emails a six-digit code — with password
-sign-in kept as a fallback. Data lives in the `pp_` tables of the "Home" Supabase project
+Installable to the Home Screen, with a daily push reminder of what's due —
+on iPhone the two go together, since iOS only allows web push for apps added
+to the Home Screen. Sign-in is passwordless — Supabase emails a six-digit
+code — with password sign-in kept as a fallback. Data lives in the `pp_` tables of the "Home" Supabase project
 ([payment-plans-schema.sql](payment-plans-schema.sql)), protected by RLS so
 the browser talks to Supabase directly. The only server-side piece is the
 `plans-config` function.
@@ -82,7 +84,9 @@ the browser talks to Supabase directly. The only server-side piece is the
 | `SUPABASE_SERVICE_KEY` | Splitter — `data`, `users`, `notify` |
 | `ADMIN_EMAIL` | Splitter — `users` |
 | `RESEND_API_KEY`, `SITE_URL` | Splitter — `notify` |
-| `PLANS_SUPABASE_URL`, `PLANS_SUPABASE_ANON_KEY` | Payment Plans — `plans-config` |
+| `PLANS_SUPABASE_URL`, `PLANS_SUPABASE_ANON_KEY` | Payment Plans — `plans-config`, `plans-push-send` |
+| `PLANS_VAPID_PUBLIC`, `PLANS_VAPID_PRIVATE`, `PLANS_VAPID_SUBJECT` | Payment Plans — web push |
+| `PLANS_SUPABASE_SERVICE_KEY` | Payment Plans — `plans-reminders` (the scheduled job only) |
 
 ### Browser support
 
