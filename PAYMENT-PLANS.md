@@ -222,6 +222,7 @@ the claim is released so the next hourly run can retry.
 | `PLANS_VAPID_PRIVATE` | both senders — never leaves the server |
 | `PLANS_VAPID_SUBJECT` | both senders (a `mailto:` for the push service) |
 | `PLANS_REMINDERS_DATABASE_URL` | **`plans-reminders` only** |
+| `SUPABASE_CA_CERT` | `plans-reminders` only — Supabase's root certificate, PEM text, so the pooler's certificate can be verified |
 
 The scheduled job is the one place that runs with no user session, so RLS
 has no JWT to gate on. It used to hold the Home project's service key for

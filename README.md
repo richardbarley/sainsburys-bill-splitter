@@ -87,6 +87,7 @@ the browser talks to Supabase directly. The only server-side piece is the
 | `PLANS_SUPABASE_URL`, `PLANS_SUPABASE_ANON_KEY` | Payment Plans — `plans-config`, `plans-push-send` |
 | `PLANS_VAPID_PUBLIC`, `PLANS_VAPID_PRIVATE`, `PLANS_VAPID_SUBJECT` | Payment Plans — web push |
 | `PLANS_REMINDERS_DATABASE_URL` | Payment Plans — `plans-reminders` (the scheduled job only; a login as the `pp_reminders` role, see `PAYMENT-PLANS.md`) |
+| `SUPABASE_CA_CERT` | Payment Plans — `plans-reminders` (Supabase's root certificate, PEM, pasted whole) |
 
 ### Browser support
 
