@@ -18,6 +18,13 @@
 //       postgresql://pp_reminders.<project ref>:<password>@<pooler host>:6543/postgres
 //       The transaction-pooler string from the dashboard's Connect dialog with
 //       the user swapped for `pp_reminders.<project ref>`.
+//   SUPABASE_CA_CERT
+//       Supabase's root certificate as PEM text, pasted whole: Project Settings
+//       → Database → SSL Configuration → Download certificate, open the file,
+//       copy from -----BEGIN CERTIFICATE----- to -----END CERTIFICATE-----.
+//       The pooler's certificate is signed by Supabase's own root rather than a
+//       public one, so without this Node refuses the connection with
+//       "self-signed certificate in certificate chain".
 //   PLANS_VAPID_PUBLIC, PLANS_VAPID_PRIVATE, PLANS_VAPID_SUBJECT
 //
 // PLANS_SUPABASE_SERVICE_KEY is no longer read. Remove it.
@@ -28,8 +35,22 @@ const { buildDigest, londonToday, londonHour } = require('./lib/digest');
 
 const all = async (db, table) => (await db.query(`select * from ${table}`)).rows;
 
+// A pasted certificate rarely survives a form field intact: Netlify's value
+// box can flatten the line breaks to spaces, or store them as literal "\n".
+// OpenSSL insists on the exact PEM layout, so rebuild it from the base64
+// between the markers rather than trusting whatever arrived.
+function normalisePem(raw) {
+  const text = String(raw || '').replace(/\\n/g, '\n');
+  const m = text.match(/-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/);
+  if (!m) return '';
+  const b64 = m[1].replace(/\s+/g, '');
+  if (!b64) return '';
+  return '-----BEGIN CERTIFICATE-----\n' + b64.match(/.{1,64}/g).join('\n') + '\n-----END CERTIFICATE-----\n';
+}
+
 exports.handler = async () => {
   const { PLANS_REMINDERS_DATABASE_URL } = process.env;
+  const CA = normalisePem(process.env.SUPABASE_CA_CERT);
 
   if (!PLANS_REMINDERS_DATABASE_URL) {
     // Not an error worth failing the schedule over — the app works fine
@@ -37,13 +58,21 @@ exports.handler = async () => {
     console.log('plans-reminders: PLANS_REMINDERS_DATABASE_URL not set — skipping.');
     return { statusCode: 200, body: JSON.stringify({ skipped: 'no database url' }) };
   }
+  if (!CA) {
+    // Loud, not skipped: the URL is set, so somebody meant this to run.
+    console.error('plans-reminders: SUPABASE_CA_CERT not set — cannot verify the pooler, not connecting.');
+    return { statusCode: 500, body: JSON.stringify({ error: 'SUPABASE_CA_CERT not set' }) };
+  }
 
   const today = londonToday();
   const hour  = londonHour();
 
-  // Verification stays on: the pooler presents a publicly trusted certificate.
-  // A certificate error on the first run means pin Supabase's CA, not disable.
-  const db = new Client({ connectionString: PLANS_REMINDERS_DATABASE_URL, ssl: { rejectUnauthorized: true } });
+  // The pooler's certificate chains to Supabase's own root, which Node does
+  // not trust by default: the first run without this failed with
+  // "self-signed certificate in certificate chain". Pinning that root keeps
+  // verification on; turning it off would let anyone between Netlify and
+  // Supabase read the role's password and the ledger.
+  const db = new Client({ connectionString: PLANS_REMINDERS_DATABASE_URL, ssl: { ca: CA, rejectUnauthorized: true } });
   try {
     await db.connect();
   } catch (err) {
