@@ -35,10 +35,22 @@ const { buildDigest, londonToday, londonHour } = require('./lib/digest');
 
 const all = async (db, table) => (await db.query(`select * from ${table}`)).rows;
 
+// A pasted certificate rarely survives a form field intact: Netlify's value
+// box can flatten the line breaks to spaces, or store them as literal "\n".
+// OpenSSL insists on the exact PEM layout, so rebuild it from the base64
+// between the markers rather than trusting whatever arrived.
+function normalisePem(raw) {
+  const text = String(raw || '').replace(/\\n/g, '\n');
+  const m = text.match(/-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/);
+  if (!m) return '';
+  const b64 = m[1].replace(/\s+/g, '');
+  if (!b64) return '';
+  return '-----BEGIN CERTIFICATE-----\n' + b64.match(/.{1,64}/g).join('\n') + '\n-----END CERTIFICATE-----\n';
+}
+
 exports.handler = async () => {
   const { PLANS_REMINDERS_DATABASE_URL } = process.env;
-  // Netlify may store a pasted multi-line value with literal "\n" sequences.
-  const CA = (process.env.SUPABASE_CA_CERT || '').replace(/\\n/g, '\n').trim();
+  const CA = normalisePem(process.env.SUPABASE_CA_CERT);
 
   if (!PLANS_REMINDERS_DATABASE_URL) {
     // Not an error worth failing the schedule over — the app works fine
