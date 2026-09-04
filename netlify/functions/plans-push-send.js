@@ -19,7 +19,7 @@
 //   PLANS_VAPID_PUBLIC, PLANS_VAPID_PRIVATE, PLANS_VAPID_SUBJECT
 
 const { createClient } = require('@supabase/supabase-js');
-const { deliver } = require('./lib/push');
+const { deliver, supabaseStore } = require('./lib/push');
 const { buildDigest, londonToday } = require('./lib/digest');
 
 const CORS = {
@@ -101,7 +101,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const result = await deliver(sb, subs, payload);
+    const result = await deliver(supabaseStore(sb), subs, payload);
     return ok({ ...result, payload });
   } catch (err) {
     return fail(500, String(err.message || err));
