@@ -66,9 +66,12 @@ sends them off to request a replacement they don't need.
 
 ### Access
 
-- Access is granted by adding an address to `pp_members`. A signed-in
-  non-member gets an explicit "no access" screen rather than a
-  confusingly-empty app.
+- Access is granted from the hub (`barley-hub.netlify.app` → People), which
+  writes the suite's `suite_members` table; `pp_is_member()` and
+  `pp_is_owner()` answer from it with `app = 'plans'`. `pp_members` is the
+  old list, kept only until checklist item b-drop-old. A signed-in
+  non-member gets an explicit "no access" screen naming who to ask, rather
+  than a confusingly-empty app.
 - Defence in depth: `anon` holds no table grants at all on the `pp_` tables,
   so an unauthenticated caller is refused before RLS is even consulted.
   `pp_is_member()` / `pp_is_owner()` have EXECUTE revoked from `PUBLIC`
