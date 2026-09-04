@@ -52,9 +52,11 @@ exports.handler = async (event) => {
   const { data: { user }, error: authErr } = await sb.auth.getUser(token);
   if (authErr || !user) return fail(401, 'Invalid or expired token');
 
-  const { data: members, error: memberErr } = await sb.from('pp_members').select('email');
+  // The same question the policies ask, answered from the suite's members
+  // table. Listing pp_members would say no to somebody the hub had just added.
+  const { data: member, error: memberErr } = await sb.rpc('pp_is_member');
   if (memberErr) return fail(500, memberErr.message);
-  if (!members || !members.length) return fail(403, 'Not a member of this ledger');
+  if (member !== true) return fail(403, 'Not a member of this ledger');
 
   let body = {};
   try { body = JSON.parse(event.body || '{}'); } catch (e) { return fail(400, 'Bad JSON'); }

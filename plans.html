@@ -908,6 +908,17 @@ async function registerServiceWorker() {
   }
 }
 
+/** Was this subscription created against the key the server signs with? */
+function madeWithKey(sub, vapidPublicKey) {
+  const key = sub.options && sub.options.applicationServerKey;
+  if (!key || !vapidPublicKey) return true; // cannot tell; assume fine
+  const ours = urlBase64ToUint8Array(vapidPublicKey);
+  const theirs = new Uint8Array(key);
+  if (theirs.length !== ours.length) return false;
+  for (let i = 0; i < ours.length; i++) if (theirs[i] !== ours[i]) return false;
+  return true;
+}
+
 async function currentPushSubscription() {
   if (!pushSupported()) return null;
   const reg = await navigator.serviceWorker.getRegistration('/plans');
@@ -936,6 +947,15 @@ async function enablePush(sb, vapidPublicKey, email) {
   const reg = await navigator.serviceWorker.ready;
 
   let sub = await reg.pushManager.getSubscription();
+  // A subscription is bound to the key it was made with, and the push service
+  // refuses anything signed with a different private key. When the key pair
+  // is replaced (it was, on 4 September 2026, because the private half had
+  // never been set on the server) the browser still holds the old one and
+  // would hand it back here as if it were fine. Compare, and replace.
+  if (sub && !madeWithKey(sub, vapidPublicKey)) {
+    await sub.unsubscribe().catch(() => {});
+    sub = null;
+  }
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,   // required; Safari rejects a silent subscription
@@ -1557,10 +1577,13 @@ function App() {
         if (session?.user) {
           setUser(session.user);
           // RLS returns zero rows rather than an error for a non-member,
-          // so membership is checked explicitly instead of being inferred
-          // from an app that merely looks empty.
-          const { data: members } = await sb.from('pp_members').select('email');
-          if (!members || !members.length) { setIsMember(false); setReady(true); return; }
+          // so membership is asked outright instead of being inferred from
+          // an app that merely looks empty. Asked of pp_is_member(), which
+          // is what every pp_ policy asks, so the screen and the database
+          // cannot disagree; it answers from the suite's members table, and
+          // a person added from the hub is a member here the same second.
+          const { data: member } = await sb.rpc('pp_is_member');
+          if (member !== true) { setIsMember(false); setReady(true); return; }
           await reload();
         }
         setReady(true);
@@ -1575,8 +1598,8 @@ function App() {
     setUser(u);
     try {
       const sb = await initSb();
-      const { data: members } = await sb.from('pp_members').select('email');
-      if (!members || !members.length) { setIsMember(false); return; }
+      const { data: member } = await sb.rpc('pp_is_member');
+      if (member !== true) { setIsMember(false); return; }
       await reload();
     } catch (err) {
       setInitError(err.message || String(err));
@@ -1629,12 +1652,13 @@ function App() {
     return (
       <div className="login-wrap">
         <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
-        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>No access</div>
+        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>You're signed in, but not on the list for Plans</div>
         <div style={{ fontSize: 14, color: 'var(--muted)', textAlign: 'center', lineHeight: 1.5, maxWidth: 300 }}>
-          <strong>{user.email}</strong> isn't a member of this ledger. Add the address
-          to <code>pp_members</code> to grant access.
+          Ask Richard to add <strong>{user.email}</strong>. If that isn't the address you
+          expected, sign out and try another.
         </div>
-        <button className="btn btn-ghost" style={{ marginTop: 20 }} onClick={signOut}>Sign out</button>
+        <a className="btn btn-ghost" style={{ marginTop: 20 }} href="https://barley-hub.netlify.app">See the apps you can open</a>
+        <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={signOut}>Sign out</button>
       </div>
     );
   }
