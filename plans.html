@@ -908,6 +908,17 @@ async function registerServiceWorker() {
   }
 }
 
+/** Was this subscription created against the key the server signs with? */
+function madeWithKey(sub, vapidPublicKey) {
+  const key = sub.options && sub.options.applicationServerKey;
+  if (!key || !vapidPublicKey) return true; // cannot tell; assume fine
+  const ours = urlBase64ToUint8Array(vapidPublicKey);
+  const theirs = new Uint8Array(key);
+  if (theirs.length !== ours.length) return false;
+  for (let i = 0; i < ours.length; i++) if (theirs[i] !== ours[i]) return false;
+  return true;
+}
+
 async function currentPushSubscription() {
   if (!pushSupported()) return null;
   const reg = await navigator.serviceWorker.getRegistration('/plans');
@@ -936,6 +947,15 @@ async function enablePush(sb, vapidPublicKey, email) {
   const reg = await navigator.serviceWorker.ready;
 
   let sub = await reg.pushManager.getSubscription();
+  // A subscription is bound to the key it was made with, and the push service
+  // refuses anything signed with a different private key. When the key pair
+  // is replaced (it was, on 4 September 2026, because the private half had
+  // never been set on the server) the browser still holds the old one and
+  // would hand it back here as if it were fine. Compare, and replace.
+  if (sub && !madeWithKey(sub, vapidPublicKey)) {
+    await sub.unsubscribe().catch(() => {});
+    sub = null;
+  }
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,   // required; Safari rejects a silent subscription
