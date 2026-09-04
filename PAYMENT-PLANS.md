@@ -221,14 +221,23 @@ the claim is released so the next hourly run can retry.
 | `PLANS_VAPID_PUBLIC` | `plans-config` (served to the browser), both senders |
 | `PLANS_VAPID_PRIVATE` | both senders — never leaves the server |
 | `PLANS_VAPID_SUBJECT` | both senders (a `mailto:` for the push service) |
-| `PLANS_SUPABASE_SERVICE_KEY` | **`plans-reminders` only** |
+| `PLANS_REMINDERS_DATABASE_URL` | **`plans-reminders` only** |
 
-The scheduled job is the one place that genuinely needs the service key: it
-runs with no user session, so RLS has no JWT to gate on. Everything else —
-subscribing, unsubscribing, the test notification, and the on-demand
-"preview today's reminder" — goes through the caller's own token, so the app
-is fully usable and testable before that key is ever set. Without it the
-scheduled function logs that it is skipping and returns cleanly.
+The scheduled job is the one place that runs with no user session, so RLS
+has no JWT to gate on. It used to hold the Home project's service key for
+that reason — a key that ignores RLS on everything in the project, and the
+project is also the house and its door code. It now connects as
+`pp_reminders`, a Postgres role created by `payment-plans-reminders-role.sql`
+whose grants are exactly the reads the digest needs, the claim in
+`pp_reminders_sent`, and pruning dead push subscriptions. The variable is the
+transaction-pooler connection string from the dashboard's Connect dialog with
+the user changed to `pp_reminders.<project ref>`; the password is set once by
+hand with `alter role pp_reminders with login password '…'` and never stored
+in a repository. Everything else — subscribing, unsubscribing, the test
+notification, and the on-demand "preview today's reminder" — goes through
+the caller's own token, so the app is fully usable and testable before that
+variable is ever set. Without it the scheduled function logs that it is
+skipping and returns cleanly.
 
 ### Dead devices
 

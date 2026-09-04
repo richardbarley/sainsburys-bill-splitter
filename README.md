@@ -86,7 +86,7 @@ the browser talks to Supabase directly. The only server-side piece is the
 | `RESEND_API_KEY`, `SITE_URL` | Splitter — `notify` |
 | `PLANS_SUPABASE_URL`, `PLANS_SUPABASE_ANON_KEY` | Payment Plans — `plans-config`, `plans-push-send` |
 | `PLANS_VAPID_PUBLIC`, `PLANS_VAPID_PRIVATE`, `PLANS_VAPID_SUBJECT` | Payment Plans — web push |
-| `PLANS_SUPABASE_SERVICE_KEY` | Payment Plans — `plans-reminders` (the scheduled job only) |
+| `PLANS_REMINDERS_DATABASE_URL` | Payment Plans — `plans-reminders` (the scheduled job only; a login as the `pp_reminders` role, see `PAYMENT-PLANS.md`) |
 
 ### Browser support
 
