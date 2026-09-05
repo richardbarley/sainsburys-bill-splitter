@@ -1,6 +1,12 @@
 -- ============================================================
--- Sainsbury's Bill Splitter — Supabase schema
--- Paste this into the Supabase SQL Editor and click Run
+-- Sainsbury's Bill Splitter — Supabase schema  (HISTORY — not applied anywhere)
+--
+-- This is the schema as it was on the splitter's own project, before the
+-- move into the suite's Home project in September 2026. The live tables are
+-- bs_config and bs_bill_history, created by barley-home migration
+-- 0009_bills.sql, which is the schema and the record of what changed:
+-- no `admins` array (an owner on the hub replaces it) and no assigned_*
+-- columns (nothing read them). Kept for reading, not for running.
 -- ============================================================
 
 -- Household config (people, groups)

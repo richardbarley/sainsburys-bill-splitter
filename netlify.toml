@@ -20,6 +20,7 @@
 
 # Payment Plans lives alongside the Sainsbury's splitter as a second app.
 # The splitter keeps "/" untouched; this is just a tidy URL for plans.html.
+# Both are in the suite: same Home project, same members list, same sign-in.
 [[redirects]]
   from = "/plans"
   to = "/plans.html"

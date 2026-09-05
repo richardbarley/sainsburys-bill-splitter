@@ -292,12 +292,23 @@ function colorFor(name, allNames) {
 }
 
 // ── Supabase ─────────────────────────────────────────────────
+// The Home project, since September 2026 — the same one Plans, Home and the
+// hub use. `plans-config` hands out its URL and publishable key; the tables
+// are `bs_config` and `bs_bill_history` (barley-home migration 0009), every
+// one behind RLS keyed on the suite's members list, so the browser talks to
+// Supabase directly and no function holds a service key any more.
 const API = '/.netlify/functions';
 let _sb = null;
+// Whether the signed-in person may change the household or delete a
+// receipt. Asked of bills_is_owner() once membership is confirmed — the
+// same question the write policies ask, so the buttons and the database
+// cannot disagree. It used to be an `admins` array in the config row
+// compared against user.email in the browser.
+let _owner = false;
 
 async function initSb() {
   if (_sb) return _sb;
-  const r   = await fetch(`${API}/client-config`);
+  const r   = await fetch(`${API}/plans-config`);
   const cfg = await r.json();
   if (!cfg.supabaseUrl) throw new Error(cfg.error || 'Missing supabaseUrl in config response');
   _sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
@@ -1043,7 +1054,9 @@ function App() {
   const [ready,      setReady]      = useState(false);
   const [initError,  setInitError]  = useState(null);
   const [user,       setUser]       = useState(null);
-  const [config,     setConfig]     = useState({ people: [], groups: [], peopleEmojis: {}, groupEmojis: {}, admins: [] });
+  const [config,     setConfig]     = useState({ people: [], groups: [], peopleEmojis: {}, groupEmojis: {} });
+  // null = not asked yet, false = signed in but not on the list for Bills
+  const [member,     setMember]     = useState(null);
   const [bills,      setBills]      = useState([]);
   const [screen,     setScreen]     = useState('bills');
   const [activeBill, setActiveBill] = useState(null);
@@ -1075,6 +1088,7 @@ function App() {
         // Set up auth listener first (synchronous)
         sb.auth.onAuthStateChange((_, session) => {
           setUser(session?.user ?? null);
+          if (!session?.user) { setMember(null); _owner = false; }
         });
         // Then get current session
         return sb.auth.getSession();
@@ -1090,20 +1104,35 @@ function App() {
       });
   }, []);
 
-  // Load data + subscribe when logged in
+  // Load data + subscribe when logged in — after asking whether this
+  // address is on the list at all. RLS answers a non-member with zero rows
+  // rather than an error, which looks exactly like a household with no
+  // receipts, so membership is asked outright of bills_is_member(): the same
+  // function every bs_ policy asks, answered from the suite's members table,
+  // so somebody added on the hub is a member here the same second.
   useEffect(() => {
     if (!user || !_sb) return;
+    let cancelled = false;
+    let ch = null;
 
-    Promise.all([
-      _sb.from('bill_history').select('*').order('saved_at', { ascending: false }).limit(50),
-      _sb.from('config').select('*').eq('id', 1).single(),
-    ]).then(([{ data: bRows }, { data: cfgRow }]) => {
+    (async () => {
+      const { data: isMember } = await _sb.rpc('bills_is_member');
+      if (cancelled) return;
+      if (isMember !== true) { setMember(false); return; }
+      const { data: isOwner } = await _sb.rpc('bills_is_owner');
+      _owner = isOwner === true;
+      setMember(true);
+
+      const [{ data: bRows }, { data: cfgRow }] = await Promise.all([
+        _sb.from('bs_bill_history').select('*').order('saved_at', { ascending: false }).limit(50),
+        _sb.from('bs_config').select('*').eq('id', 1).single(),
+      ]);
+      if (cancelled) return;
       if (bRows)  setBills(bRows.map(rowToBill));
-      if (cfgRow) setConfig({ people: cfgRow.people || [], groups: cfgRow.groups || [], peopleEmojis: cfgRow.people_emojis || {}, groupEmojis: cfgRow.group_emojis || {}, admins: cfgRow.admins || [] });
-    });
+      if (cfgRow) setConfig({ people: cfgRow.people || [], groups: cfgRow.groups || [], peopleEmojis: cfgRow.people_emojis || {}, groupEmojis: cfgRow.group_emojis || {} });
 
-    const ch = _sb.channel('bs-collab')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bill_history' }, p => {
+      ch = _sb.channel('bs-collab')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bs_bill_history' }, p => {
         if (p.eventType === 'DELETE') {
           const gone = String(p.old.id);
           setBills(prev => prev.filter(b => b.id !== gone));
@@ -1118,24 +1147,31 @@ function App() {
         });
         setActiveBill(prev => (prev?.id === b.id ? b : prev));
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'config' }, p => {
-        if (p.new) setConfig({ people: p.new.people || [], groups: p.new.groups || [], peopleEmojis: p.new.people_emojis || {}, groupEmojis: p.new.group_emojis || {}, admins: p.new.admins || [] });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bs_config' }, p => {
+        if (p.new) setConfig({ people: p.new.people || [], groups: p.new.groups || [], peopleEmojis: p.new.people_emojis || {}, groupEmojis: p.new.group_emojis || {} });
       })
       .subscribe();
+    })().catch(err => {
+      console.error('Load failed:', err);
+      if (!cancelled) setInitError('Could not load the receipts. Please refresh.');
+    });
 
-    return () => _sb.removeChannel(ch);
+    return () => { cancelled = true; if (ch) _sb.removeChannel(ch); };
   }, [user]);
 
   // ── Actions ───────────────────────────────────────────────
   async function saveConfig(cfg) {
     setConfig(cfg);
-    await _sb.from('config').upsert({
+    // `.select()` because RLS filters an UPDATE it refuses rather than raising:
+    // a member who is not an owner would otherwise see "saved" and find the
+    // change gone on the next load with nothing saying why.
+    const { data, error } = await _sb.from('bs_config').upsert({
       id: 1, people: cfg.people, groups: cfg.groups,
       people_emojis: cfg.peopleEmojis || {},
       group_emojis:  cfg.groupEmojis  || {},
-      admins:        cfg.admins       || [],
       updated_at: new Date().toISOString(),
-    });
+    }).select();
+    if (error || !data?.length) showToast('Not saved — only an owner can change the household');
   }
 
   async function saveBillAssignments(bill, newAssign) {
@@ -1143,7 +1179,7 @@ function App() {
     const patched   = { ...bill, assignments: newAssign, totals: newTotals };
     setActiveBill(patched);
     setBills(prev => prev.map(b => b.id === patched.id ? patched : b));
-    await _sb.from('bill_history').update({
+    await _sb.from('bs_bill_history').update({
       assignments: newAssign, totals: newTotals,
       updated_at: new Date().toISOString(),
     }).eq('id', bill.id);
@@ -1154,7 +1190,7 @@ function App() {
     const patched = { ...bill, completedAt: now, completedBy: user.email };
     setActiveBill(patched);
     setBills(prev => prev.map(b => b.id === patched.id ? patched : b));
-    await _sb.from('bill_history').update({
+    await _sb.from('bs_bill_history').update({
       completed_at: now, completed_by: user.email, updated_at: now,
     }).eq('id', bill.id);
     showToast('✅ Receipt marked as complete');
@@ -1164,14 +1200,15 @@ function App() {
     const patched = { ...bill, completedAt: null, completedBy: null };
     setActiveBill(patched);
     setBills(prev => prev.map(b => b.id === patched.id ? patched : b));
-    await _sb.from('bill_history').update({
+    await _sb.from('bs_bill_history').update({
       completed_at: null, completed_by: null, updated_at: new Date().toISOString(),
     }).eq('id', bill.id);
     showToast('↩ Receipt reopened for editing');
   }
 
   async function deleteBill(bill) {
-    await _sb.from('bill_history').delete().eq('id', bill.id);
+    const { data, error } = await _sb.from('bs_bill_history').delete().eq('id', bill.id).select();
+    if (error || !data?.length) { showToast('Not deleted — only an owner can delete a receipt'); return; }
     setBills(prev => prev.filter(b => b.id !== bill.id));
     if (activeBill?.id === bill.id) { setActiveBill(null); setScreen('bills'); }
   }
@@ -1197,6 +1234,29 @@ function App() {
   }
 
   if (!user) return <LoginScreen />;
+
+  if (member === null) {
+    return (
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh' }}>
+        <div className="spin" style={{ width:32, height:32 }} />
+      </div>
+    );
+  }
+
+  if (member === false) {
+    return (
+      <div className="login-wrap">
+        <div style={{ fontSize:40, marginBottom:12 }}>🔒</div>
+        <div style={{ fontSize:17, fontWeight:700, marginBottom:6, textAlign:'center' }}>You're signed in, but not on the list for Bills</div>
+        <div style={{ fontSize:14, color:'var(--muted)', textAlign:'center', lineHeight:1.5, maxWidth:300 }}>
+          Ask Richard to add <strong>{user.email}</strong>. If that isn't the address you
+          expected, sign out and try another.
+        </div>
+        <a className="btn btn-ghost" style={{ marginTop:20 }} href="https://barley-hub.netlify.app">See the apps you can open</a>
+        <button className="btn btn-ghost" style={{ marginTop:8 }} onClick={() => _sb.auth.signOut()}>Sign out</button>
+      </div>
+    );
+  }
 
   const ctx = { user, config, bills, showToast, saveConfig, saveBillAssignments, completeBill, uncompleteBill, deleteBill };
 
@@ -1235,24 +1295,80 @@ function App() {
 // LOGIN
 // ════════════════════════════════════════════════════════════
 function LoginScreen() {
-  const [email,    setEmail]    = useState('');
-  const [password, setPassword] = useState('');
-  const [err,      setErr]      = useState('');
-  const [busy,     setBusy]     = useState(false);
+  // A code emailed to the address, the way every app in the suite signs in
+  // since the move to the Home project. No password: the accounts are made
+  // by the hub when somebody is added to Bills, confirmed and passwordless,
+  // so there is no password to have. shouldCreateUser:false — sign-ups are
+  // off on the project, and an address that is not on the list must get a
+  // plain refusal rather than a silently minted account.
+  const [step,  setStep]  = useState('email');    // 'email' | 'code'
+  const [email, setEmail] = useState(() => { try { return localStorage.getItem('bs.lastEmail') || ''; } catch { return ''; } });
+  const [code,  setCode]  = useState('');
+  const [busy,  setBusy]  = useState(false);
+  const [err,   setErr]   = useState('');
+  const [note,  setNote]  = useState('');
 
-  async function submit(e) {
-    e.preventDefault();
-    if (!email || !password) return;
-    setBusy(true); setErr('');
+  const addr = () => email.trim().toLowerCase();
+
+  async function sendCode(e) {
+    if (e) e.preventDefault();
+    if (!addr()) return;
+    setBusy(true); setErr(''); setNote('');
     try {
       if (!_sb) await initSb();
-      const { error } = await _sb.auth.signInWithPassword({ email, password });
-      if (error) setErr(error.message);
+      const { error } = await _sb.auth.signInWithOtp({
+        email: addr(),
+        options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + '/' },
+      });
+      if (error) throw error;
+      try { localStorage.setItem('bs.lastEmail', addr()); } catch {}
+      setStep('code');
+      setNote('Check your email. Enter the code, or just click the link in the message.');
     } catch (ex) {
-      setErr('Connection error: ' + (ex.message || 'please try again'));
+      const m = String(ex.message || ex);
+      setErr(
+        /signups not allowed|not found|invalid/i.test(m)
+          ? "That address isn't set up for this app. Ask Richard to add you on the hub."
+          : /rate|too many|seconds/i.test(m)
+            ? 'Too many requests just now — wait a minute and try again.'
+            : m
+      );
     }
     setBusy(false);
   }
+
+  async function verifyCode(e) {
+    e.preventDefault();
+    const token = code.replace(/\D/g, '');
+    if (!token) return;
+    setBusy(true); setErr('');
+    try {
+      if (!_sb) await initSb();
+      const { error } = await _sb.auth.verifyOtp({ email: addr(), token, type: 'email' });
+      if (error) throw error;
+      // onAuthStateChange in App picks the session up from here.
+    } catch (ex) {
+      const m = String(ex.message || ex);
+      // One message covers a mistyped code and a stale one, so don't guess which.
+      setErr(/expired|invalid|token/i.test(m)
+        ? "That code didn't work. It may be mistyped, or it may have expired — send a new one to be sure."
+        : m);
+    }
+    setBusy(false);
+  }
+
+  const errBox = err ? (
+    <div style={{ background:'var(--danger-light)', border:'1px solid var(--danger-border)', borderRadius:8,
+      padding:'10px 14px', marginTop:14, fontSize:14, color:'var(--danger)' }}>
+      {err}
+    </div>
+  ) : null;
+  const noteBox = note && !err ? (
+    <div style={{ background:'var(--primary-light)', border:'1px solid var(--border)', borderRadius:8,
+      padding:'10px 14px', marginTop:14, fontSize:14 }}>
+      {note}
+    </div>
+  ) : null;
 
   return (
     <div className="login-wrap">
@@ -1261,27 +1377,42 @@ function LoginScreen() {
         <h1 style={{ fontSize:26, marginBottom:6 }}>Bill Splitter</h1>
         <p style={{ color:'var(--muted)', fontSize:14 }}>Sign in to manage shared receipts</p>
       </div>
-      <form onSubmit={submit} style={{ width:'100%', maxWidth:340 }}>
-        <div style={{ marginBottom:14 }}>
-          <label className="label">Email</label>
-          <input className="input" type="email" placeholder="you@example.com"
-            value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" />
-        </div>
-        <div style={{ marginBottom:20 }}>
-          <label className="label">Password</label>
-          <input className="input" type="password" placeholder="••••••••"
-            value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
-        </div>
-        {err && (
-          <div style={{ background:'var(--danger-light)', border:'1px solid var(--danger-border)', borderRadius:8,
-            padding:'10px 14px', marginBottom:16, fontSize:14, color:'var(--danger)' }}>
-            {err}
+      {step === 'code' ? (
+        <form onSubmit={verifyCode} style={{ width:'100%', maxWidth:340 }}>
+          <div style={{ marginBottom:14 }}>
+            <label className="label">Code</label>
+            <input className="input" type="text" inputMode="numeric" autoComplete="one-time-code" autoFocus
+              placeholder="123456" maxLength={10}
+              style={{ fontSize:22, letterSpacing:'.22em', textAlign:'center' }}
+              value={code} onChange={e => setCode(e.target.value)} />
+            <div style={{ fontSize:12, color:'var(--muted)', marginTop:6 }}>Sent to {addr()}</div>
           </div>
-        )}
-        <button type="submit" className="btn btn-primary btn-full btn-lg" disabled={busy}>
-          {busy ? <span className="spin" /> : 'Sign in'}
-        </button>
-      </form>
+          <button type="submit" className="btn btn-primary btn-full btn-lg" disabled={busy || !code.trim()}>
+            {busy ? <span className="spin" /> : 'Sign in'}
+          </button>
+          <button type="button" className="btn btn-ghost btn-full" style={{ marginTop:8 }} onClick={sendCode} disabled={busy}>
+            Send another code
+          </button>
+          <button type="button" className="btn btn-ghost btn-full" style={{ marginTop:8, border:'none' }}
+            onClick={() => { setStep('email'); setCode(''); setErr(''); setNote(''); }}>
+            Use a different email
+          </button>
+          {errBox}{noteBox}
+        </form>
+      ) : (
+        <form onSubmit={sendCode} style={{ width:'100%', maxWidth:340 }}>
+          <div style={{ marginBottom:20 }}>
+            <label className="label">Email</label>
+            <input className="input" type="email" placeholder="you@example.com" autoFocus
+              value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required />
+            <div style={{ fontSize:12, color:'var(--muted)', marginTop:6 }}>We'll email you a code — no password needed.</div>
+          </div>
+          <button type="submit" className="btn btn-primary btn-full btn-lg" disabled={busy || !email.trim()}>
+            {busy ? <span className="spin" /> : 'Email me a code'}
+          </button>
+          {errBox}{noteBox}
+        </form>
+      )}
     </div>
   );
 }
@@ -1295,8 +1426,8 @@ function BillsScreen({ bills, config, user, onOpenBill, onOpenSettings, onOpenIn
   const [notifyBill, setNotifyBill] = useState(null);
   const fileRef = useRef();
 
-  // Admin if admins list is empty (first-run) OR user's email is in the list
-  const isAdmin = !(config.admins || []).length || (config.admins || []).includes(user?.email);
+  // An owner of Bills on the hub's People screen; see _owner.
+  const isAdmin = _owner;
 
   const allNames = useMemo(() => [
     ...(config.people || []),
@@ -1314,7 +1445,7 @@ function BillsScreen({ bills, config, user, onOpenBill, onOpenSettings, onOpenIn
         setUploading(false); return;
       }
       const total = items.reduce((s, x) => s + x.price, 0);
-      const { data, error } = await _sb.from('bill_history').insert({
+      const { data, error } = await _sb.from('bs_bill_history').insert({
         id: Date.now(), items, assignments: {}, totals: {},
         total_bill: total, receipt_date: receiptDate,
         config_snapshot: config, saved_at: new Date().toISOString(),
@@ -1633,12 +1764,12 @@ function NotifyUsersSheet({ bill, user, onClose, showToast }) {
     setStep('pick');
     setLoading(true);
     try {
-      const { data: { session } } = await _sb.auth.getSession();
-      const r = await fetch(`${API}/users`, {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      const d = await r.json();
-      const list = (d.users || [])
+      // Everybody on the list for Bills, from bills_members() — the hub's
+      // People screen is where that list is kept, so it is always current.
+      const { data, error } = await _sb.rpc('bills_members');
+      if (error) throw error;
+      const list = (data || [])
+        .map(m => ({ id: m.email, email: m.email, label: m.label || '', confirmed: true }))
         .filter(u => u.email && u.email.toLowerCase() !== (user?.email || '').toLowerCase());
 
       // Default selection: remembered list intersected with current users.
@@ -1748,7 +1879,7 @@ function NotifyUsersSheet({ bill, user, onClose, showToast }) {
         {step === 'prompt' && (
           <div style={{ padding:'18px 20px 8px' }}>
             <p style={{ fontSize:14, color:'var(--text)', margin:'0 0 14px', lineHeight:1.5 }}>
-              Would you like to email the other registered users to let them know a new receipt is ready to split?
+              Would you like to email the others on Bills to let them know a new receipt is ready to split?
             </p>
             <p style={{ fontSize:12, color:'var(--muted)', margin:'0 0 4px', lineHeight:1.5 }}>
               You can pick who to include on the next screen. We'll remember your selection for next time.
@@ -1764,7 +1895,7 @@ function NotifyUsersSheet({ bill, user, onClose, showToast }) {
               </div>
             ) : users.length === 0 ? (
               <p style={{ fontSize:13, color:'var(--muted)', textAlign:'center', padding:'20px 0' }}>
-                No other registered users to notify.
+                Nobody else is on Bills yet — add people on the hub.
               </p>
             ) : <>
               <div style={{ display:'flex', gap:8, marginBottom:10 }}>
@@ -1794,8 +1925,9 @@ function NotifyUsersSheet({ bill, user, onClose, showToast }) {
                     </div>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:14, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                        {u.email}
+                        {u.label || u.email}
                       </div>
+                      {u.label && <div style={{ fontSize:11, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{u.email}</div>}
                       {!u.confirmed && (
                         <div style={{ fontSize:11, color:'var(--muted)' }}>Pending invitation</div>
                       )}
@@ -2059,7 +2191,7 @@ function BillDetailScreen({ bill, bills, config, user, onBack, saveBillAssignmen
   ], [config]);
 
   const isDone      = !!bill.completedAt;
-  const isAdmin     = !(config.admins || []).length || (config.admins || []).includes(user?.email);
+  const isAdmin     = _owner;
   const total       = bill.items.length;
   const assigned    = countAssigned(bill.items, bill.assignments);
   const allAssigned = assigned === total && total > 0;
@@ -2898,7 +3030,7 @@ function SettingsScreen({ config, user, onBack, saveConfig, showToast }) {
       </div>
 
       <div className="tab-bar">
-        {[['people','👤 People'],['groups','👥 Groups'],['users','🔑 Users'],['general','⚙️ General']].map(([key, label]) => (
+        {[['people','👤 People'],['groups','👥 Groups'],['users','🔑 Access'],['general','⚙️ General']].map(([key, label]) => (
           <div key={key} className={'tab' + (tab === key ? ' on' : '')} onClick={() => setTab(key)}>
             {label}
           </div>
@@ -3212,121 +3344,24 @@ function GroupsTab({ config, saveConfig, showToast }) {
   );
 }
 
-// ── Users tab ─────────────────────────────────────────────────
-function UsersTab({ user, showToast }) {
-  const [users,    setUsers]    = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [newEmail, setNewEmail] = useState('');
-  const [newPass,  setNewPass]  = useState('');
-  const [adding,   setAdding]   = useState(false);
-
-  useEffect(() => { fetchUsers(); }, []);
-
-  async function fetchUsers() {
-    setLoading(true);
-    try {
-      const { data: { session } } = await _sb.auth.getSession();
-      const r = await fetch(`${API}/users`, {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      const d = await r.json();
-      setUsers(d.users || []);
-    } catch {}
-    setLoading(false);
-  }
-
-  async function addUser(e) {
-    e.preventDefault();
-    if (!newEmail || !newPass) return;
-    setAdding(true);
-    try {
-      const { data: { session } } = await _sb.auth.getSession();
-      const r = await fetch(`${API}/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ email: newEmail, password: newPass }),
-      });
-      const d = await r.json();
-      if (d.error) showToast('Error: ' + d.error);
-      else { showToast('User added ✓'); setNewEmail(''); setNewPass(''); fetchUsers(); }
-    } catch (ex) { showToast('Failed: ' + ex.message); }
-    setAdding(false);
-  }
-
-  async function removeUser(uid) {
-    if (!confirm('Remove this user?')) return;
-    try {
-      const { data: { session } } = await _sb.auth.getSession();
-      const r = await fetch(`${API}/users`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ userId: uid }),
-      });
-      const d = await r.json();
-      if (d.error) showToast('Error: ' + d.error);
-      else { showToast('User removed'); fetchUsers(); }
-    } catch (ex) { showToast('Failed: ' + ex.message); }
-  }
-
-  if (loading) {
-    return <div style={{ display:'flex', justifyContent:'center', padding:40 }}><div className="spin" /></div>;
-  }
-
+// ── Access tab ────────────────────────────────────────────────
+// Who may open this app is decided on the hub, not here. The app used to
+// keep its own accounts, made with passwords through a function holding the
+// service key; since the move to the suite's members list that screen, the
+// function and the key are gone.
+function UsersTab({ user }) {
   return (
     <div style={{ padding:16 }}>
-      <p style={{ fontSize:13, color:'var(--muted)', marginBottom:16 }}>
-        Manage who has access to this app. Only the admin can add or remove users.
+      <p style={{ fontSize:14, lineHeight:1.5, marginBottom:12 }}>
+        Who can open Bills is set on the hub, under <strong>People</strong>. Anyone
+        given <em>Can view</em> or <em>Can edit</em> for Bills there can sign in here with
+        an emailed code, upload a receipt and assign items.
       </p>
-
-      {users.map(u => {
-        const isSelf = u.email === user?.email;
-        const joined = u.createdAt
-          ? new Date(u.createdAt).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })
-          : '';
-        return (
-          <div key={u.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 0', borderBottom:'1px solid var(--border)' }}>
-            <div style={{ width:36, height:36, borderRadius:'50%', flexShrink:0, background:'var(--primary-light)', border:'2px solid var(--primary)', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--primary)', fontWeight:700, fontSize:14 }}>
-              {(u.email || '?')[0].toUpperCase()}
-            </div>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontWeight:600, fontSize:14, display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
-                <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{u.email}</span>
-                {isSelf && <span style={{ fontSize:10, background:'var(--surface-alt)', color:'var(--muted)', borderRadius:10, padding:'1px 6px', flexShrink:0 }}>You</span>}
-              </div>
-              <div style={{ fontSize:12, color:'var(--muted)', display:'flex', alignItems:'center', gap:6 }}>
-                <span className={'badge ' + (u.confirmed ? 'badge-active' : 'badge-pending')}
-                  style={{ fontSize:10, padding:'1px 6px' }}>
-                  {u.confirmed ? 'Active' : 'Pending'}
-                </span>
-                {u.confirmed ? 'Joined' : 'Added'} {joined}
-              </div>
-            </div>
-            {!isSelf && (
-              <button className="btn btn-ghost" style={{ padding:'4px 8px', color:'var(--danger)', fontSize:12, flexShrink:0 }}
-                onClick={() => removeUser(u.id)}>
-                Remove
-              </button>
-            )}
-          </div>
-        );
-      })}
-
-      <form onSubmit={addUser} style={{ marginTop:20, background:'var(--bg)', borderRadius:10, padding:14, border:'1px solid var(--border)' }}>
-        <div style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>➕ Add User</div>
-        <div style={{ marginBottom:10 }}>
-          <label className="label">Email</label>
-          <input className="input" type="email" placeholder="user@example.com"
-            value={newEmail} onChange={e => setNewEmail(e.target.value)} />
-        </div>
-        <div style={{ marginBottom:12 }}>
-          <label className="label">Password</label>
-          <input className="input" type="password" placeholder="Set a temporary password"
-            value={newPass} onChange={e => setNewPass(e.target.value)} />
-        </div>
-        <button type="submit" className="btn btn-primary btn-full" disabled={adding}>
-          {adding ? <span className="spin" /> : 'Add User'}
-        </button>
-      </form>
+      <p style={{ fontSize:13, color:'var(--muted)', lineHeight:1.5, marginBottom:16 }}>
+        <em>Can edit</em> also allows deleting a receipt and changing the people and groups
+        on the other tabs. You are signed in as <strong>{user?.email}</strong>{_owner ? ', an owner' : ''}.
+      </p>
+      <a className="btn btn-primary btn-full" href="https://barley-hub.netlify.app/people">Open People on the hub</a>
     </div>
   );
 }

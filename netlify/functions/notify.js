@@ -1,10 +1,21 @@
 // netlify/functions/notify.js
-// Sends an email notification when an assignee marks a bill as complete.
-// Uses Resend (https://resend.com) — free tier covers this easily.
+// Sends an email when a receipt is uploaded ("tell the others") or when an
+// assignee marks a bill as complete. Uses Resend (https://resend.com).
+//
+// The caller is checked with the Home project's PUBLISHABLE key, not a
+// service key: `auth.getUser(token)` asks Supabase whether the bearer token
+// is a live session, and that needs no privilege at all. The old version
+// held the splitter project's service role key for the same one question,
+// which is a master key kept for a job a door key does. Since the move to
+// the suite there is no service key on this site anywhere.
+//
+// It also asks, as the caller, whether they are on the list for Bills —
+// being signed in to the suite is not the same as being allowed in here.
 //
 // Required Netlify environment variables:
+//   PLANS_SUPABASE_URL, PLANS_SUPABASE_ANON_KEY — the Home project (shared with Plans)
 //   RESEND_API_KEY  — from your Resend dashboard
-//   SITE_URL        — your Netlify URL (e.g. https://yourapp.netlify.app)
+//   SITE_URL        — this site's URL
 
 const { createClient } = require('@supabase/supabase-js');
 
@@ -47,14 +58,23 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS, body: '' };
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method not allowed' }) };
 
+  const auth  = event.headers.authorization || event.headers.Authorization || '';
+  const token = auth.replace(/^Bearer\s+/i, '').trim();
   const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY,
-    { auth: { autoRefreshToken: false, persistSession: false } }
+    process.env.PLANS_SUPABASE_URL,
+    process.env.PLANS_SUPABASE_ANON_KEY,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: { headers: token ? { Authorization: 'Bearer ' + token } : {} },
+    }
   );
 
   const caller = await getCallerUser(supabase, event);
   if (!caller) return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: 'Unauthorized' }) };
+
+  const { data: member, error: memberErr } = await supabase.rpc('bills_is_member');
+  if (memberErr) return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: memberErr.message }) };
+  if (member !== true) return { statusCode: 403, headers: CORS, body: JSON.stringify({ error: 'Not on the list for Bills' }) };
 
   const body = JSON.parse(event.body || '{}');
   const kind = body.kind || 'complete';   // 'complete' (default, legacy) | 'newReceipt'
